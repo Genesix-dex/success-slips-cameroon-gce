@@ -11,36 +11,6 @@ import { ArrowLeft, ArrowRight, Upload, Eye, CreditCard, CheckCircle } from 'luc
 import { useToast } from '@/hooks/use-toast';
 import { useRegistration, RegistrationData } from '@/hooks/useRegistration';
 
-interface RegistrationData {
-  examLevel: string;
-  personalInfo: {
-    fullName: string;
-    cin: string;
-    centerNumber: string;
-    centerName: string;
-    dateOfBirth: string;
-    gender: string;
-    location: string;
-    department: string;
-  };
-  subjectsAndGrades: {
-    [subject: string]: {
-      grade: string;
-      price: number;
-    };
-  };
-  documents: {
-    timetable: File | null;
-    nationalId: File | null;
-    birthCertificate: File | null;
-  };
-  services: {
-    gradeModification: boolean;
-    followUp: boolean;
-    certificateManufacture: boolean;
-  };
-}
-
 const Registration = () => {
   const { department } = useParams<{ department: string }>();
   const navigate = useNavigate();
