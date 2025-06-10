@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,10 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Upload, Eye, CreditCard } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Upload, Eye, CreditCard, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useRegistration, RegistrationData } from '@/hooks/useRegistration';
 
 interface RegistrationData {
+  examLevel: string;
   personalInfo: {
     fullName: string;
     cin: string;
@@ -44,8 +45,12 @@ const Registration = () => {
   const { department } = useParams<{ department: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { submitRegistration, submitPayment, isLoading } = useRegistration();
   const [currentStep, setCurrentStep] = useState(1);
+  const [registrationId, setRegistrationId] = useState<string | null>(null);
+
   const [registrationData, setRegistrationData] = useState<RegistrationData>({
+    examLevel: '',
     personalInfo: {
       fullName: '',
       cin: '',
@@ -68,6 +73,28 @@ const Registration = () => {
       certificateManufacture: false
     }
   });
+
+  const [paymentData, setPaymentData] = useState({
+    payerName: '',
+    phoneNumber: '',
+    paymentMethod: '',
+    transactionId: '',
+    paymentScreenshot: null as File | null
+  });
+
+  // Load exam level from localStorage on component mount
+  useEffect(() => {
+    const savedExamLevel = localStorage.getItem('selectedExamLevel');
+    if (savedExamLevel) {
+      setRegistrationData(prev => ({
+        ...prev,
+        examLevel: savedExamLevel
+      }));
+    } else {
+      // If no exam level is selected, redirect to exam level selection
+      navigate('/exam-level');
+    }
+  }, [navigate]);
 
   const departmentSubjects = {
     science: [
@@ -145,7 +172,69 @@ const Registration = () => {
     setCurrentStep(4);
   };
 
+  const handleRegistrationSubmit = async () => {
+    try {
+      const registration = await submitRegistration(registrationData);
+      setRegistrationId(registration.id);
+      setCurrentStep(5);
+    } catch (error) {
+      console.error('Registration submission failed:', error);
+    }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!registrationId) {
+      toast({
+        title: "Error",
+        description: "Registration ID not found. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!paymentData.payerName || !paymentData.phoneNumber || !paymentData.paymentMethod) {
+      toast({
+        title: "Missing Payment Information",
+        description: "Please fill in all required payment fields.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      await submitPayment(registrationId, {
+        ...paymentData,
+        amount: calculateTotalCost()
+      });
+      setCurrentStep(6);
+    } catch (error) {
+      console.error('Payment submission failed:', error);
+    }
+  };
+
   const handleFileUpload = (field: keyof typeof registrationData.documents, file: File) => {
+    // Validate file type and size
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload only JPEG, PNG, or PDF files.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (file.size > maxSize) {
+      toast({
+        title: "File Too Large",
+        description: "Please upload files smaller than 5MB.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setRegistrationData(prev => ({
       ...prev,
       documents: {
@@ -180,6 +269,7 @@ const Registration = () => {
   };
 
   const subjects = departmentSubjects[department as keyof typeof departmentSubjects] || [];
+  const examLevelDisplay = registrationData.examLevel === 'CGCE_ORDINARY_LEVEL' ? 'CGCE Ordinary Level' : 'CGCE Advanced Level';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
@@ -192,7 +282,9 @@ const Registration = () => {
               Back
             </Button>
             <div className="text-center">
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white capitalize">{department} Registration</h1>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white capitalize">
+                {examLevelDisplay} - {department} Registration
+              </h1>
               <p className="text-sm text-gray-600 dark:text-gray-300">Step {currentStep} of 6</p>
             </div>
             <img src="/lovable-uploads/82c1802c-61d7-4b62-bfdc-cbf11c257601.png" alt="Success Guaranteed" className="h-10 w-auto" />
@@ -207,6 +299,9 @@ const Registration = () => {
           <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
             <CardHeader>
               <CardTitle>Personal Information</CardTitle>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Exam Level: <span className="font-semibold">{examLevelDisplay}</span>
+              </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
@@ -314,7 +409,7 @@ const Registration = () => {
                 </Select>
               </div>
 
-              <Button onClick={handlePersonalInfoSubmit} className="w-full">
+              <Button onClick={handlePersonalInfoSubmit} className="w-full" disabled={isLoading}>
                 Continue to Subjects
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -377,7 +472,7 @@ const Registration = () => {
                 </div>
               </div>
 
-              <Button onClick={handleSubjectsSubmit} className="w-full mt-6">
+              <Button onClick={handleSubjectsSubmit} className="w-full mt-6" disabled={isLoading}>
                 Continue to Documents
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -390,6 +485,9 @@ const Registration = () => {
           <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
             <CardHeader>
               <CardTitle>Documents & Services</CardTitle>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Upload required documents (JPEG, PNG, PDF only - Max 5MB each)
+              </p>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
@@ -467,7 +565,7 @@ const Registration = () => {
                 </div>
               </div>
 
-              <Button onClick={handleDocumentsSubmit} className="w-full">
+              <Button onClick={handleDocumentsSubmit} className="w-full" disabled={isLoading}>
                 Continue to Review
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -486,6 +584,7 @@ const Registration = () => {
                 <div>
                   <h3 className="font-semibold mb-3">Personal Information</h3>
                   <div className="space-y-2 text-sm">
+                    <p><span className="font-medium">Exam Level:</span> {examLevelDisplay}</p>
                     <p><span className="font-medium">Name:</span> {registrationData.personalInfo.fullName}</p>
                     <p><span className="font-medium">CIN:</span> {registrationData.personalInfo.cin}</p>
                     <p><span className="font-medium">Date of Birth:</span> {registrationData.personalInfo.dateOfBirth}</p>
@@ -512,8 +611,8 @@ const Registration = () => {
                 <Button variant="outline" onClick={() => setCurrentStep(1)}>
                   Edit Information
                 </Button>
-                <Button onClick={() => setCurrentStep(5)} className="flex-1">
-                  Proceed to Payment
+                <Button onClick={handleRegistrationSubmit} className="flex-1" disabled={isLoading}>
+                  Submit Registration
                   <CreditCard className="w-4 h-4 ml-2" />
                 </Button>
               </div>
@@ -548,26 +647,56 @@ const Registration = () => {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label>Payer Name *</Label>
-                    <Input placeholder="Your full name" />
+                    <Input 
+                      placeholder="Your full name" 
+                      value={paymentData.payerName}
+                      onChange={(e) => setPaymentData(prev => ({ ...prev, payerName: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <Label>Phone Number *</Label>
-                    <Input placeholder="677XXXXXXX" />
+                    <Input 
+                      placeholder="677XXXXXXX" 
+                      value={paymentData.phoneNumber}
+                      onChange={(e) => setPaymentData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <Label>Transaction ID (Optional)</Label>
-                  <Input placeholder="Enter transaction ID after payment" />
+                  <Label>Payment Method *</Label>
+                  <Select value={paymentData.paymentMethod} onValueChange={(value) => 
+                    setPaymentData(prev => ({ ...prev, paymentMethod: value }))
+                  }>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MTN_MOBILE_MONEY">MTN Mobile Money</SelectItem>
+                      <SelectItem value="ORANGE_MONEY">Orange Money</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <div className="space-y-3">
-                  <Button className="w-full bg-orange-500 hover:bg-orange-600">
-                    Pay with Orange Money
-                  </Button>
-                  <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-black">
-                    Pay with MTN Mobile Money
-                  </Button>
+                <div>
+                  <Label>Transaction ID (Optional)</Label>
+                  <Input 
+                    placeholder="Enter transaction ID after payment" 
+                    value={paymentData.transactionId}
+                    onChange={(e) => setPaymentData(prev => ({ ...prev, transactionId: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <Label>Payment Screenshot (Optional)</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setPaymentData(prev => ({ ...prev, paymentScreenshot: file }));
+                    }}
+                  />
                 </div>
 
                 <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -581,14 +710,8 @@ const Registration = () => {
                   </a>
                 </div>
 
-                <Button onClick={() => {
-                  toast({
-                    title: "Payment Successful!",
-                    description: "Your registration is being processed.",
-                  });
-                  setCurrentStep(6);
-                }} className="w-full">
-                  Confirm Payment
+                <Button onClick={handlePaymentSubmit} className="w-full" disabled={isLoading}>
+                  Submit Payment for Verification
                 </Button>
               </div>
             </CardContent>
@@ -600,27 +723,18 @@ const Registration = () => {
           <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90 text-center">
             <CardContent className="p-8">
               <div className="text-6xl mb-4">🎉</div>
-              <h2 className="text-2xl font-bold text-green-600 mb-4">Payment Successful!</h2>
+              <h2 className="text-2xl font-bold text-green-600 mb-4">Submission Successful!</h2>
               <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Your request is being processed. You will be contacted shortly with updates.
+                Your registration and payment have been submitted for verification. You will be contacted shortly with updates.
               </p>
               
               <div className="space-y-4">
-                <Button className="w-full" onClick={() => {
-                  // Generate and download PDF receipt
-                  const receiptData = {
-                    ...registrationData,
-                    totalCost: calculateTotalCost(),
-                    registrationId: `SG${Date.now()}`
-                  };
-                  console.log('PDF Receipt Data:', receiptData);
-                  toast({
-                    title: "Receipt Downloaded",
-                    description: "Your receipt has been downloaded successfully.",
-                  });
-                }}>
-                  Download Receipt (PDF)
-                </Button>
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    <CheckCircle className="w-5 h-5 inline mr-2" />
+                    Registration ID: <span className="font-mono">{registrationId}</span>
+                  </p>
+                </div>
                 
                 <a href="https://wa.me/237676078168" target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" className="w-full">

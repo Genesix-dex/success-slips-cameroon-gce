@@ -9,7 +9,193 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      admin_users: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          role: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id?: string
+          role?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          role?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      documents: {
+        Row: {
+          document_type: string
+          file_name: string
+          file_size: number
+          file_type: string
+          file_url: string
+          id: string
+          registration_id: string | null
+          uploaded_at: string
+          verification_notes: string | null
+          verification_status: string
+        }
+        Insert: {
+          document_type: string
+          file_name: string
+          file_size: number
+          file_type: string
+          file_url: string
+          id?: string
+          registration_id?: string | null
+          uploaded_at?: string
+          verification_notes?: string | null
+          verification_status?: string
+        }
+        Update: {
+          document_type?: string
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          file_url?: string
+          id?: string
+          registration_id?: string | null
+          uploaded_at?: string
+          verification_notes?: string | null
+          verification_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          admin_notes: string | null
+          amount: number
+          created_at: string
+          id: string
+          payer_name: string
+          payment_method: string
+          payment_screenshot_url: string | null
+          phone_number: string
+          registration_id: string | null
+          status: string
+          transaction_id: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          amount: number
+          created_at?: string
+          id?: string
+          payer_name: string
+          payment_method: string
+          payment_screenshot_url?: string | null
+          phone_number: string
+          registration_id?: string | null
+          status?: string
+          transaction_id?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          admin_notes?: string | null
+          amount?: number
+          created_at?: string
+          id?: string
+          payer_name?: string
+          payment_method?: string
+          payment_screenshot_url?: string | null
+          phone_number?: string
+          registration_id?: string | null
+          status?: string
+          transaction_id?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      registrations: {
+        Row: {
+          admin_notes: string | null
+          center_name: string | null
+          center_number: string | null
+          cin: string
+          created_at: string
+          date_of_birth: string
+          department: string
+          document_verification_status: string
+          exam_level: string
+          full_name: string
+          gender: string
+          id: string
+          location: string
+          payment_status: string
+          services: Json
+          subjects_and_grades: Json
+          total_cost: number
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          center_name?: string | null
+          center_number?: string | null
+          cin: string
+          created_at?: string
+          date_of_birth: string
+          department: string
+          document_verification_status?: string
+          exam_level: string
+          full_name: string
+          gender: string
+          id?: string
+          location: string
+          payment_status?: string
+          services?: Json
+          subjects_and_grades?: Json
+          total_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          center_name?: string | null
+          center_number?: string | null
+          cin?: string
+          created_at?: string
+          date_of_birth?: string
+          department?: string
+          document_verification_status?: string
+          exam_level?: string
+          full_name?: string
+          gender?: string
+          id?: string
+          location?: string
+          payment_status?: string
+          services?: Json
+          subjects_and_grades?: Json
+          total_cost?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
