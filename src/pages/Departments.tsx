@@ -1,0 +1,149 @@
+
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Calculator, BookOpen, Briefcase, Settings, ArrowLeft, Users } from 'lucide-react';
+
+const Departments = () => {
+  const departments = [
+    {
+      name: 'Science',
+      icon: Calculator,
+      color: 'bg-gradient-to-br from-green-500 to-green-600',
+      hoverColor: 'hover:from-green-600 hover:to-green-700',
+      subjects: [
+        'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Further Mathematics',
+        'Computer Science', 'Statistics', 'Environmental Science'
+      ],
+      path: '/register/science',
+      description: 'Excel in STEM subjects with our expert guidance and comprehensive support.',
+      professionals: 15
+    },
+    {
+      name: 'Arts',
+      icon: BookOpen,
+      color: 'bg-gradient-to-br from-red-500 to-red-600',
+      hoverColor: 'hover:from-red-600 hover:to-red-700',
+      subjects: [
+        'Literature in English', 'History', 'Geography', 'Religious Studies',
+        'Philosophy', 'French', 'Government', 'Sociology'
+      ],
+      path: '/register/arts',
+      description: 'Master humanities and social sciences with our experienced faculty.',
+      professionals: 12
+    },
+    {
+      name: 'Commercial',
+      icon: Briefcase,
+      color: 'bg-gradient-to-br from-yellow-500 to-yellow-600',
+      hoverColor: 'hover:from-yellow-600 hover:to-yellow-700',
+      subjects: [
+        'Accounting', 'Economics', 'Business Management', 'Commerce',
+        'Marketing', 'Banking & Finance', 'Entrepreneurship', 'Business Law'
+      ],
+      path: '/register/commercial',
+      description: 'Build your business acumen with our commercial subjects expertise.',
+      professionals: 8
+    },
+    {
+      name: 'Technical',
+      icon: Settings,
+      color: 'bg-gradient-to-br from-blue-500 to-blue-600',
+      hoverColor: 'hover:from-blue-600 hover:to-blue-700',
+      subjects: [
+        'Information & Communication Technology', 'Engineering Science',
+        'Woodwork', 'Technical Drawing', 'Metalwork', 'Building Construction',
+        'Electrical Installation', 'Auto Mechanics'
+      ],
+      path: '/register/technical',
+      description: 'Master technical skills and engineering concepts for practical success.',
+      professionals: 10
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      {/* Header */}
+      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/20">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Link to="/">
+                <Button variant="ghost" size="sm">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Home
+                </Button>
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Choose Your Department</h1>
+                <p className="text-gray-600 dark:text-gray-300">Select your field of study to continue registration</p>
+              </div>
+            </div>
+            <img src="/lovable-uploads/82c1802c-61d7-4b62-bfdc-cbf11c257601.png" alt="Success Guaranteed" className="h-12 w-auto" />
+          </div>
+        </div>
+      </div>
+
+      {/* Department Cards */}
+      <div className="container mx-auto px-4 py-12">
+        <div className="grid md:grid-cols-2 gap-8">
+          {departments.map((dept, index) => {
+            const IconComponent = dept.icon;
+            return (
+              <Card key={index} className="group hover:scale-105 transition-all duration-300 backdrop-blur-md bg-white/90 dark:bg-gray-800/90 border-white/20 hover:shadow-2xl">
+                <CardHeader className="text-center pb-4">
+                  <div className={`inline-flex items-center justify-center w-20 h-20 rounded-3xl ${dept.color} ${dept.hoverColor} text-white mb-4 group-hover:scale-110 transition-all duration-300 mx-auto`}>
+                    <IconComponent className="w-10 h-10" />
+                  </div>
+                  <CardTitle className="text-2xl text-gray-900 dark:text-white">{dept.name}</CardTitle>
+                  <p className="text-gray-600 dark:text-gray-300">{dept.description}</p>
+                  <div className="flex items-center justify-center space-x-2 mt-2">
+                    <Users className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm text-gray-500">{dept.professionals} Professionals</span>
+                  </div>
+                </CardHeader>
+                
+                <CardContent className="pt-0">
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Available Subjects:</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {dept.subjects.map((subject, idx) => (
+                        <div key={idx} className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2">
+                          {subject}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <Link to={dept.path} className="block">
+                    <Button className={`w-full ${dept.color} ${dept.hoverColor} text-white py-3 text-lg font-semibold`}>
+                      Select {dept.name}
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Contact Support */}
+        <Card className="mt-12 backdrop-blur-md bg-gradient-to-r from-green-500/20 to-red-500/20 border-white/20">
+          <CardContent className="p-8 text-center">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Need Help Choosing?</h3>
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              Contact Mr. Akon Benedict for personalized guidance
+            </p>
+            <a href="https://wa.me/237676078168" target="_blank" rel="noopener noreferrer">
+              <Button className="bg-green-600 hover:bg-green-700 text-white">
+                Chat on WhatsApp: 676078168
+              </Button>
+            </a>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default Departments;
