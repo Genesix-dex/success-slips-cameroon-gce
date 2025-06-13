@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Generation Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 20px 0;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #output {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+      white-space: pre-wrap;
+      min-height: 100px;
+    }
+    .success { color: green; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <h1>PDF Generation Test</h1>
+  <p>Click the button below to test PDF generation with the new watermark and optimization settings.</p>
+  
+  <button id="generatePdf">Generate PDF</button>
+  
+  <h2>Results:</h2>
+  <div id="output">Click the button to generate a PDF...</div>
+
+  <script type="module">
+    import { generateRegistrationPDF } from '../src/lib/pdfGenerator.js';
+
+    // Mock data for testing
+    const registrationData = {
+      name: 'John Doe',
+      registrationNumber: 'REG12345',
+      date: new Date().toISOString(),
+      subjectsAndGrades: {
+        'Mathematics': { grade: 'A', price: 5000 },
+        'Physics': { grade: 'B+', price: 5000 },
+        'Chemistry': { grade: 'A-', price: 5000 },
+      }
+    };
+
+    const paymentData = {
+      amount: 15000,
+      paymentMethod: 'Mobile Money',
+      transactionId: 'TXN12345',
+      payerName: 'John Doe',
+      phoneNumber: '237612345678'
+    };
+
+    const documents = [
+      { type: 'Birth Certificate', url: '/sample-doc.jpg' },
+      { type: 'ID Card', url: '/sample-id.jpg' }
+    ];
+
+    document.getElementById('generatePdf').addEventListener('click', async () => {
+      const output = document.getElementById('output');
+      output.textContent = 'Generating PDF, please wait...';
+      
+      try {
+        const startTime = Date.now();
+        
+        // Generate the PDF
+        const { pdfUrl, pdfBlob } = await generateRegistrationPDF(
+          registrationData,
+          paymentData,
+          documents
+        );
+        
+        const endTime = Date.now();
+        const fileSize = (pdfBlob.size / (1024 * 1024)).toFixed(2); // Size in MB
+        
+        const result = `✅ PDF Generation Complete!
+- Time taken: ${(endTime - startTime) / 1000} seconds
+- File size: ${fileSize} MB
+- PDF URL: ${pdfUrl}`;
+        
+        output.innerHTML = result.replace(/\n/g, '<br>');
+        output.className = 'success';
+        
+        // Open the PDF in a new tab
+        window.open(pdfUrl, '_blank');
+        
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        output.textContent = `❌ Error generating PDF: ${error.message || 'Unknown error'}`;
+        output.className = 'error';
+      }
+    });
+  </script>
+</body>
+</html>

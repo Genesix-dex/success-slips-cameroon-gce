@@ -3,13 +3,43 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Download, CheckCircle } from 'lucide-react';
+import { generateRegistrationPDF, downloadPDF } from '@/lib/pdfGenerator';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Upload, Eye, CreditCard, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Upload, Eye, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRegistration, RegistrationData } from '@/hooks/useRegistration';
+import Tesseract from 'tesseract.js';
+
+// Helper function to convert File to data URL
+const fileToDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
+  });
+};
+
+// Helper function to extract text from an image/PDF using Tesseract.js
+const extractTextFromFile = async (file: File): Promise<string> => {
+  if (!file) return '';
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    const {
+      data: { text }
+    } = await Tesseract.recognize(dataUrl, 'eng', {
+      logger: m => console.log(m) // Optional: progress logs
+    });
+    return text;
+  } catch (error) {
+    console.error('Tesseract OCR error:', error);
+    return '';
+  }
+};
 
 const Registration = () => {
   const { department } = useParams<{ department: string }>();
@@ -17,7 +47,9 @@ const Registration = () => {
   const { toast } = useToast();
   const { submitRegistration, submitPayment, isLoading } = useRegistration();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [registrationId, setRegistrationId] = useState<string | null>(null);
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
 
   const [registrationData, setRegistrationData] = useState<RegistrationData>({
     examLevel: '',
@@ -68,21 +100,30 @@ const Registration = () => {
 
   const departmentSubjects = {
     science: [
-      'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Further Mathematics',
-      'Computer Science', 'Statistics', 'Environmental Science'
+      'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Additional Mathematics',
+      'Human Biology', 'Agricultural Science', 'Geology', 'Geography',
+      'Technical Drawing', 'Food and Nutrition', 'Electronics', 'Computer Science',
+      'Statistics', 'Environmental Science', 'English Language', 'French'
     ],
     arts: [
-      'Literature in English', 'History', 'Geography', 'Religious Studies',
-      'Philosophy', 'French', 'Government', 'Sociology'
+      'Literature in English', 'French Literature', 'History', 'Geography',
+      'Religious Studies', 'Citizenship Education', 'Physical Education (PE)',
+      'Logic (Philosophy)', 'Economics', 'Commerce', 'Accounting',
+      'Food and Nutrition', 'Business Mathematics', 'Mathematics',
+      'French', 'Government', 'Sociology', 'English Language'
     ],
     commercial: [
-      'Accounting', 'Economics', 'Business Management', 'Commerce',
-      'Marketing', 'Banking & Finance', 'Entrepreneurship', 'Business Law'
+      'Business Mathematics', 'Accounting', 'Economics', 'Business Management',
+      'Commerce', 'Commerce and Finance', 'Marketing', 'Banking & Finance',
+      'Entrepreneurship', 'Business Law', 'Typewriting', 'Mathematics',
+      'Computer Science', 'English Language', 'Food Science'
     ],
     technical: [
-      'Information & Communication Technology', 'Engineering Science',
-      'Woodwork', 'Technical Drawing', 'Metalwork', 'Building Construction',
-      'Electrical Installation', 'Auto Mechanics'
+      'Information & Communication Technology', 'Engineering Science', 'Woodwork',
+      'Technical Drawing', 'Metalwork', 'Building Construction', 'Electrical Installation',
+      'Auto Mechanics', 'Clothing & Textiles', 'Food & Nutrition', 'Electronics', 'Electricity',
+      'Plumbing & Pipe Fitting', 'Mathematics', 'French', 'English Language', 'Chemistry',
+      'Physics', 'Biology', 'Computer Science', 'Accounting'
     ]
   };
 
@@ -129,8 +170,8 @@ const Registration = () => {
     setCurrentStep(3);
   };
 
-  const handleDocumentsSubmit = () => {
-    const { documents } = registrationData;
+  const handleDocumentsSubmit = async () => {
+    const { documents, personalInfo } = registrationData;
     if (!documents.timetable || !documents.nationalId || !documents.birthCertificate) {
       toast({
         title: "Missing Documents",
@@ -139,7 +180,42 @@ const Registration = () => {
       });
       return;
     }
-    setCurrentStep(4);
+
+    setIsOcrProcessing(true);
+    try {
+      // Run OCR on both documents in parallel
+      const [timetableText, idText] = await Promise.all([
+        extractTextFromFile(documents.timetable as File),
+        extractTextFromFile(documents.nationalId as File)
+      ]);
+
+      // Normalise strings for reliable comparison
+      const normalise = (str: string) => str.replace(/[^a-zA-Z]/g, ' ').toLowerCase();
+      const nameParts = normalise(personalInfo.fullName).split(' ').filter(Boolean);
+
+      const timetableHasAll = nameParts.every(part => normalise(timetableText).includes(part));
+      const idHasAll = nameParts.every(part => normalise(idText).includes(part));
+
+      if (!(timetableHasAll && idHasAll)) {
+        toast({
+          title: "Name Mismatch",
+          description: "The name on your Timetable and National ID does not match the entered full name.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setCurrentStep(4);
+    } catch (error) {
+      console.error('OCR verification error:', error);
+      toast({
+        title: "OCR Error",
+        description: "Unable to verify names on documents. Please ensure the images are clear and try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsOcrProcessing(false);
+    }
   };
 
   const handleRegistrationSubmit = async () => {
@@ -236,6 +312,46 @@ const Registration = () => {
         subjectsAndGrades: newSubjects
       };
     });
+  };
+
+  // Function to view document in a new tab
+  const viewDocument = (file: File) => {
+    if (!file) {
+      toast({
+        title: "Error",
+        description: "No file selected",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      const url = URL.createObjectURL(file);
+      const newWindow = window.open(url, '_blank');
+      
+      // Handle cases where popup might be blocked
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        // Fallback to download if popup is blocked
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name || 'document';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        // Clean up the object URL
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+      } else {
+        // Clean up the object URL when the window is closed
+        newWindow.onbeforeunload = () => URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error viewing document:', error);
+      toast({
+        title: "Error",
+        description: "Could not open the document",
+        variant: "destructive"
+      });
+    }
   };
 
   const subjects = departmentSubjects[department as keyof typeof departmentSubjects] || [];
@@ -480,7 +596,18 @@ const Registration = () => {
                           }}
                         />
                         {registrationData.documents[key as keyof typeof registrationData.documents] && (
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            type="button"
+                            onClick={() => {
+                              const file = registrationData.documents[key as keyof typeof registrationData.documents];
+                              if (file) {
+                                const url = URL.createObjectURL(file);
+                                window.open(url, '_blank');
+                              }
+                            }}
+                          >
                             <Eye className="w-4 h-4" />
                           </Button>
                         )}
@@ -535,7 +662,7 @@ const Registration = () => {
                 </div>
               </div>
 
-              <Button onClick={handleDocumentsSubmit} className="w-full" disabled={isLoading}>
+              <Button onClick={handleDocumentsSubmit} className="w-full" disabled={isLoading || isOcrProcessing}>
                 Continue to Review
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -705,6 +832,58 @@ const Registration = () => {
                     Registration ID: <span className="font-mono">{registrationId}</span>
                   </p>
                 </div>
+                
+                <Button 
+                  onClick={async () => {
+                    try {
+                      setIsGeneratingPdf(true);
+                      const paymentScreenshotUrl = paymentData.paymentScreenshot 
+                        ? await fileToDataUrl(paymentData.paymentScreenshot)
+                        : undefined;
+                      
+                      try {
+                        // Convert documents object to array of DocumentInfo
+                        const documentsArray = Object.entries(registrationData.documents || {})
+                          .filter(([_, file]) => file !== null && file instanceof File)
+                          .map(([type, file]) => ({
+                            type,
+                            file: file as File,
+                            url: URL.createObjectURL(file as File)
+                          }));
+                        
+                        console.log('Generating PDF with documents:', documentsArray);
+                        
+                        const { pdfUrl } = await generateRegistrationPDF(
+                          registrationData,
+                          paymentData,
+                          documentsArray,
+                          paymentScreenshotUrl
+                        );
+                        
+                        // Trigger the download
+                        const filename = `registration-receipt-${registrationId}.pdf`;
+                        downloadPDF(pdfUrl, filename);
+                      } catch (err) {
+                        console.error('Error in PDF generation:', err);
+                        throw err; // Re-throw to be caught by the outer catch
+                      }
+                    } catch (error) {
+                      console.error('Error generating PDF:', error);
+                      toast({
+                        title: 'Error',
+                        description: 'Failed to generate PDF. Please try again.',
+                        variant: 'destructive',
+                      });
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }}
+                  disabled={isGeneratingPdf}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  {isGeneratingPdf ? 'Generating PDF...' : 'Download Registration Receipt'}
+                </Button>
                 
                 <a href="https://wa.me/237676078168" target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" className="w-full">

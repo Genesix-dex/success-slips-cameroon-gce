@@ -1,7 +1,7 @@
-
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { generateRegistrationPDF, downloadPDF } from '@/lib/pdfGenerator';
 
 export interface RegistrationData {
   examLevel: string;
@@ -54,10 +54,10 @@ export const useRegistration = () => {
       .getPublicUrl(fileName);
 
     return {
-      fileName: file.name,
-      fileUrl: publicUrl,
-      fileSize: file.size,
-      fileType: file.type
+      file_name: file.name,
+      file_url: publicUrl,
+      file_size: file.size,
+      file_type: file.type
     };
   };
 
@@ -93,53 +93,34 @@ export const useRegistration = () => {
         throw registrationError;
       }
 
-      // Upload documents
-      const documentUploads = [];
-      
-      if (registrationData.documents.timetable) {
-        const timetableData = await uploadDocument(
+      // Upload documents in parallel
+      const documentUploads = await Promise.all([
+        registrationData.documents.timetable && uploadDocument(
           registrationData.documents.timetable, 
           registration.id, 
           'timetable'
-        );
-        documentUploads.push({
-          registration_id: registration.id,
-          document_type: 'timetable',
-          ...timetableData
-        });
-      }
-
-      if (registrationData.documents.nationalId) {
-        const nationalIdData = await uploadDocument(
+        ),
+        registrationData.documents.nationalId && uploadDocument(
           registrationData.documents.nationalId, 
           registration.id, 
           'national_id'
-        );
-        documentUploads.push({
-          registration_id: registration.id,
-          document_type: 'national_id',
-          ...nationalIdData
-        });
-      }
-
-      if (registrationData.documents.birthCertificate) {
-        const birthCertData = await uploadDocument(
+        ),
+        registrationData.documents.birthCertificate && uploadDocument(
           registrationData.documents.birthCertificate, 
           registration.id, 
           'birth_certificate'
-        );
-        documentUploads.push({
-          registration_id: registration.id,
-          document_type: 'birth_certificate',
-          ...birthCertData
-        });
-      }
+        ),
+      ].filter(Boolean));
 
       // Insert document records
       if (documentUploads.length > 0) {
         const { error: documentsError } = await supabase
           .from('documents')
-          .insert(documentUploads);
+          .insert(documentUploads.map((upload, index) => ({
+            registration_id: registration.id,
+            document_type: ['timetable', 'national_id', 'birth_certificate'][index],
+            ...upload
+          })));
 
         if (documentsError) {
           throw documentsError;
@@ -208,7 +189,7 @@ export const useRegistration = () => {
           phone_number: paymentData.phoneNumber,
           payment_method: paymentData.paymentMethod,
           amount: paymentData.amount,
-          transaction_id: paymentData.transactionId,
+          transaction_id: paymentData.transactionId || null,
           payment_screenshot_url: paymentScreenshotUrl
         })
         .select()
@@ -218,9 +199,69 @@ export const useRegistration = () => {
         throw paymentError;
       }
 
+      console.log('Fetching registration data for PDF...');
+      // Get registration data for PDF
+      const { data: registrationData, error: regError } = await supabase
+        .from('registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .single();
+
+      if (regError) {
+        console.error('Error fetching registration data:', regError);
+        throw regError;
+      }
+
+      if (registrationData) {
+        console.log('Registration data found, fetching documents...');
+        // Get uploaded documents
+        const { data: documents, error: docsError } = await supabase
+          .from('documents')
+          .select('document_type, file_url')
+          .eq('registration_id', registrationId);
+
+        if (docsError) {
+          console.error('Error fetching documents:', docsError);
+          throw docsError;
+        }
+        console.log('Documents found:', documents);
+
+        try {
+          console.log('Starting PDF generation...');
+          // Generate and download PDF
+          const { pdfUrl } = await generateRegistrationPDF(
+            registrationData,
+            {
+              ...paymentData,
+              amount: paymentData.amount
+            },
+            documents?.map(doc => ({
+              type: doc.document_type,
+              url: doc.file_url
+            })) || [],
+            paymentScreenshotUrl
+          );
+
+          console.log('PDF generated, attempting download...');
+          // Download the PDF
+          const fileName = `registration-${registrationData.cin || registrationId}.pdf`;
+          console.log('Downloading PDF with filename:', fileName);
+          downloadPDF(pdfUrl, fileName);
+          console.log('PDF download should be complete');
+        } catch (error) {
+          console.error('Error generating PDF:', error);
+          // Don't fail the whole operation if PDF generation fails
+          toast({
+            title: "Warning",
+            description: "Payment was successful but there was an error generating the receipt.",
+            variant: "destructive"
+          });
+        }
+      }
+
       toast({
         title: "Payment Submitted!",
-        description: "Your payment has been submitted for verification.",
+        description: "Your payment has been submitted for verification. A receipt has been downloaded.",
       });
 
       return payment;

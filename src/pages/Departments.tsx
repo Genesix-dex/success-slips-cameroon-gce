@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -6,15 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calculator, BookOpen, Briefcase, Settings, ArrowLeft, Users } from 'lucide-react';
 
 const Departments = () => {
-  const departments = [
+  // Determine selected exam level to show correct subject lists
+  const examLevel = typeof window !== 'undefined' ? localStorage.getItem('selectedExamLevel') : null;
+
+  // Subject lists for CGCE Ordinary Level
+  const ordinaryDepartments = [
     {
       name: 'Science',
       icon: Calculator,
       color: 'bg-gradient-to-br from-green-500 to-green-600',
       hoverColor: 'hover:from-green-600 hover:to-green-700',
       subjects: [
-        'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Further Mathematics',
-        'Computer Science', 'Statistics', 'Environmental Science'
+        'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Additional Mathematics',
+        'Human Biology', 'Agricultural Science', 'Geology', 'Geography',
+        'Technical Drawing', 'Food and Nutrition', 'Electronics', 'Computer Science',
+        'Statistics', 'Environmental Science', 'English Language', 'French'
       ],
       path: '/register/science',
       description: 'Excel in STEM subjects with our expert guidance and comprehensive support.',
@@ -26,8 +31,11 @@ const Departments = () => {
       color: 'bg-gradient-to-br from-red-500 to-red-600',
       hoverColor: 'hover:from-red-600 hover:to-red-700',
       subjects: [
-        'Literature in English', 'History', 'Geography', 'Religious Studies',
-        'Philosophy', 'French', 'Government', 'Sociology'
+        'Literature in English', 'French Literature', 'History', 'Geography',
+        'Religious Studies', 'Citizenship Education', 'Physical Education (PE)',
+        'Logic (Philosophy)', 'Economics', 'Commerce', 'Accounting',
+        'Food and Nutrition', 'Business Mathematics', 'Mathematics',
+        'French', 'Government', 'Sociology', 'English Language'
       ],
       path: '/register/arts',
       description: 'Master humanities and social sciences with our experienced faculty.',
@@ -39,8 +47,10 @@ const Departments = () => {
       color: 'bg-gradient-to-br from-yellow-500 to-yellow-600',
       hoverColor: 'hover:from-yellow-600 hover:to-yellow-700',
       subjects: [
-        'Accounting', 'Economics', 'Business Management', 'Commerce',
-        'Marketing', 'Banking & Finance', 'Entrepreneurship', 'Business Law'
+        'Business Mathematics', 'Accounting', 'Economics', 'Business Management',
+        'Commerce', 'Commerce and Finance', 'Marketing', 'Banking & Finance',
+        'Entrepreneurship', 'Business Law', 'Typewriting', 'Mathematics',
+        'Computer Science', 'English Language', 'Food Science'
       ],
       path: '/register/commercial',
       description: 'Build your business acumen with our commercial subjects expertise.',
@@ -52,15 +62,103 @@ const Departments = () => {
       color: 'bg-gradient-to-br from-blue-500 to-blue-600',
       hoverColor: 'hover:from-blue-600 hover:to-blue-700',
       subjects: [
-        'Information & Communication Technology', 'Engineering Science',
-        'Woodwork', 'Technical Drawing', 'Metalwork', 'Building Construction',
-        'Electrical Installation', 'Auto Mechanics'
+        'Information & Communication Technology', 'Engineering Science', 'Woodwork',
+        'Technical Drawing', 'Metalwork', 'Building Construction', 'Electrical Installation',
+        'Auto Mechanics', 'Clothing & Textiles', 'Food & Nutrition', 'Electronics', 'Electricity',
+        'Plumbing & Pipe Fitting', 'Mathematics', 'French', 'English Language', 'Chemistry',
+        'Physics', 'Biology', 'Computer Science', 'Accounting','Food Science'
       ],
       path: '/register/technical',
       description: 'Master technical skills and engineering concepts for practical success.',
       professionals: 10
     }
   ];
+
+  // --- Subject lists for CGCE Advanced Level (updated) ---
+  const advancedDepartments = [
+    {
+      name: 'Science',
+      icon: Calculator,
+      color: 'bg-gradient-to-br from-green-500 to-green-600',
+      hoverColor: 'hover:from-green-600 hover:to-green-700',
+      subjects: [
+        'Physics', 'Chemistry', 'Biology', 'Further Mathematics',
+        'Geology', 'Agricultural Science', 'Pure Mathematics with Statistics',
+        'Pure Mathematics with Mechanics', 'Geography', 'ICT', 'Computer Science','Food Science'
+      ],
+      path: '/register/science',
+      description: 'Excel in STEM subjects with our expert guidance and comprehensive support.',
+      professionals: 15
+    },
+    {
+      name: 'Arts',
+      icon: BookOpen,
+      color: 'bg-gradient-to-br from-red-500 to-red-600',
+      hoverColor: 'hover:from-red-600 hover:to-red-700',
+      subjects: [
+        'Economics', 'English Language', 'Mathematics with Statistics', 'Sociology',
+        'Psychology', 'Law & Government', 'Accounting', 'Commerce', 'Business Studies','Information & Communication Technology','Computer Science','Food Science'
+        ,'History','Logic(Philosophy)'
+      ],
+      path: '/register/arts',
+      description: 'Master humanities and social sciences with our experienced faculty.',
+      professionals: 12
+    },
+    {
+      name: 'Commercial',
+      icon: Briefcase,
+      color: 'bg-gradient-to-br from-yellow-500 to-yellow-600',
+      hoverColor: 'hover:from-yellow-600 hover:to-yellow-700',
+      subjects: [
+        'Business Mathematics', 'Home Economics', 'Financial Accounting', 'Cost and Management Accounting',
+        'Corporate Accounting', 'Computer Science', 'ICT', 'Religious Studies',
+        'Pure Mathematics with Statistics', 'Commerce and Finance', 'Entrepreneurship',
+        'Professional Marketing Practice', 'Natural Science', 'Family Life Education and Gerontology',
+        'Resource Management on Home Studies and Social Life', 'Catering Management & Dietetics',
+        'Information Processing', 'Professional Communication Skills',
+        'Organisation of Administrative Works and Technology', 'Philosophy', 'Digital Marketing Practice',
+        'Marketing Skills', 'Law', 'Professional English', 'Principles and Practice of Taxation',
+        'Information Management and Systems for Business'
+      ],
+      path: '/register/commercial',
+      description: 'Build your business acumen with our commercial subjects expertise.',
+      professionals: 8
+    },
+    {
+      name: 'Technical',
+      icon: Settings,
+      color: 'bg-gradient-to-br from-blue-500 to-blue-600',
+      hoverColor: 'hover:from-blue-600 hover:to-blue-700',
+      subjects: [
+        'Religious Studies', 'ICT', 'Entrepreneurship', 'Philosophy', 'Professional English', 'Law',
+        'Chassis Systems and Transmission', 'Electrical and Electronic Systems', 'Engine Systems',
+        'Mechanical Design', 'Automation', 'Engineering Science', 'Mathematics', 'Diesel Engine Technology',
+        'Hydraulics and Chassis Systems', 'Textile Technology and Equipment', 'Fashion and Fabric Design',
+        'Pattern Making and Garment Construction', 'Work Organisation', 'Architectural Technology and Practice',
+        'Building Construction Technology and Practice', 'Drawing and Architectural Modeling',
+        'Building Construction Drawing', 'Architectural Project Management', 'Building Construction Project Management',
+        'Public Works Projects Management', 'Plumbing Project Management', 'Architectural Applied Mechanics',
+        'Building Construction Applied Mechanics', 'Public Works Applied Mechanics',
+        'Electrical/Electronics Applied Mechanics', 'Wood Cabinet Applied Mechanics',
+        'Building Construction Surveying and Soil Mechanics', 'Power Electronics',
+        'Automatic Control of Electrical Machines', 'Design of Electrical Installations', 'Circuit Analysis',
+        'Communication Systems', 'Fundamental and Power Electronics', 'Design of Electronic Systems',
+        'Microprocessor and Computer Technology', 'Electrical Machines', 'Sustainable Machines',
+        'Sustainable Management of Forest Resources', 'Forest Operations', 'Forest Sciences', 'Forest Geomatics',
+        'Heating, Ventilation, and Air Conditioning', 'Refrigeration Installation', 'Air Condition Repairs',
+        'Food Processing and Preservation', 'Medical Devices', 'Electrical, Electronics, and Refrigeration Systems',
+        'Industrial Automation', 'Auto Visual Systems', 'Alarm Systems', 'Network and Telecommunication Systems',
+        'Electronic Diagrams', 'Maintenance of Mechanical, Pneumatic, and Hydraulic Systems',
+        'Maintenance of Automated Production Systems', 'Maintenance of Electrical, Electronic, and Refrigeration Systems',
+        'Mechanical Technology and Fluid Power', 'Production Process'
+      ],
+      path: '/register/technical',
+      description: 'Master technical skills and engineering concepts for practical success.',
+      professionals: 10
+    }
+  ];
+
+  const departments = examLevel === 'CGCE_ORDINARY_LEVEL' ? ordinaryDepartments : advancedDepartments;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
