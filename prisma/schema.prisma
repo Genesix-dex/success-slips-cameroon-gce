@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  fullName      String?
+  role          String      @default("USER") // 'ADMIN', 'USER', 'SUPPORT'
+  status        String      @default("active") // 'active', 'inactive', 'suspended'
+  lastLogin     DateTime?
+  loginCount    Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations
+  coupons       Coupon[]
+  submissions   Submission[]
+  documents     Document[]
+  payments      Payment[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model Coupon {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Float
+  type        String   // 'percentage' or 'fixed'
+  maxUses     Int      @default(0) // 0 means unlimited
+  usedCount   Int      @default(0)
+  validFrom   DateTime @default(now())
+  validUntil  DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+
+  @@index([code])
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model Submission {
+  id            String    @id @default(cuid())
+  reference     String    @unique
+  fullName      String
+  email         String
+  examLevel     String
+  department    String
+  status        String    @default("pending") // 'pending', 'processing', 'completed', 'rejected'
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  documents     Document[]
+  payments      Payment[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([reference])
+  @@index([status])
+  @@index([userId])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  size        Int
+  url         String
+  submission  Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId String
+  uploadedBy  User      @relation(fields: [uploadedById], references: [id])
+  uploadedById String
+  uploadedAt  DateTime  @default(now())
+  referenceId String
+  referenceType String // 'submission', 'payment', 'other'
+
+  @@index([submissionId])
+  @@index([uploadedById])
+  @@index([referenceId])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  reference     String   @unique
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  amount        Float
+  currency      String
+  status        String    @default("pending") // 'pending', 'completed', 'failed', 'refunded'
+  method        String
+  transactionId String?
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([reference])
+  @@index([status])
+  @@index([userId])
+}

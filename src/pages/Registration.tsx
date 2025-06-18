@@ -1,18 +1,17 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Download, CheckCircle } from 'lucide-react';
+import { Download, CreditCard, ArrowLeft, ArrowRight, Upload, Eye } from 'lucide-react';
 import { generateRegistrationPDF, downloadPDF } from '@/lib/pdfGenerator';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Upload, Eye, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRegistration, RegistrationData } from '@/hooks/useRegistration';
-import Tesseract from 'tesseract.js';
+import { couponService } from '@/services/couponService';
 
 // Helper function to convert File to data URL
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -24,22 +23,30 @@ const fileToDataUrl = (file: File): Promise<string> => {
   });
 };
 
-// Helper function to extract text from an image/PDF using Tesseract.js
-const extractTextFromFile = async (file: File): Promise<string> => {
-  if (!file) return '';
-  try {
-    const dataUrl = await fileToDataUrl(file);
-    const {
-      data: { text }
-    } = await Tesseract.recognize(dataUrl, 'eng', {
-      logger: m => console.log(m) // Optional: progress logs
-    });
-    return text;
-  } catch (error) {
-    console.error('Tesseract OCR error:', error);
-    return '';
-  }
-};
+
+// Type definitions
+interface DocumentInfo {
+  type: string;
+  file: File;
+  url: string;
+}
+
+interface PaymentData {
+  payerName: string;
+  contactPreference: 'email' | 'phone' | 'both';
+  email: string;
+  phoneNumber: string;
+  paymentMethod: string;
+  transactionId: string;
+  paymentScreenshot: File | null;
+}
+
+// Constants for className patterns
+const CARD_CLASS = 'max-w-2xl mx-auto backdrop-blur-md bg-card/90';
+const CARD_CONTENT_CLASS = 'space-y-4';
+const GRID_CLASS = 'grid md:grid-cols-2 gap-4';
+const INPUT_CLASS = 'w-full';
+const LOGO_CLASS = 'h-10 w-auto';
 
 const Registration = () => {
   const { department } = useParams<{ department: string }>();
@@ -49,7 +56,7 @@ const Registration = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [registrationId, setRegistrationId] = useState<string | null>(null);
-  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+
 
   const [registrationData, setRegistrationData] = useState<RegistrationData>({
     examLevel: '',
@@ -76,13 +83,66 @@ const Registration = () => {
     }
   });
 
-  const [paymentData, setPaymentData] = useState({
+  const [paymentData, setPaymentData] = useState<PaymentData>({
     payerName: '',
+    contactPreference: 'phone',
+    email: '',
     phoneNumber: '',
     paymentMethod: '',
     transactionId: '',
-    paymentScreenshot: null as File | null
+    paymentScreenshot: null,
+    couponCode: ''
   });
+
+  const [coupon, setCoupon] = useState<{
+    code: string;
+    discount: number;
+    type: 'percentage' | 'fixed';
+    isValid: boolean;
+  } | null>(null);
+
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
+  const validateCoupon = async (code: string) => {
+    if (!code.trim()) return;
+    
+    try {
+      setIsValidatingCoupon(true);
+      const response = await couponService.validateCoupon(code);
+      
+      if (response.isValid && response.coupon) {
+        setCoupon({
+          code: response.coupon.code,
+          discount: response.coupon.discount,
+          type: response.coupon.type,
+          isValid: true
+        });
+        
+        toast({
+          title: 'Coupon Applied',
+          description: `Your ${response.coupon.discount}${response.coupon.type === 'percentage' ? '%' : 'XAF'} discount has been applied!`,
+          variant: 'default'
+        });
+      } else {
+        setCoupon(null);
+        toast({
+          title: 'Invalid Coupon',
+          description: response.message || 'The coupon code you entered is not valid.',
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      console.error('Error validating coupon:', error);
+      setCoupon(null);
+      toast({
+        title: 'Error',
+        description: 'Failed to validate coupon. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
 
   // Load exam level from localStorage on component mount
   useEffect(() => {
@@ -142,7 +202,27 @@ const Registration = () => {
   ];
 
   const calculateTotalCost = () => {
-    return Object.values(registrationData.subjectsAndGrades).reduce((total, subject) => total + subject.price, 0);
+    const subtotal = Object.values(registrationData.subjectsAndGrades).reduce((total, subject) => total + subject.price, 0);
+    
+    if (!coupon?.isValid) return subtotal;
+    
+    if (coupon.type === 'percentage') {
+      return subtotal * (1 - coupon.discount / 100);
+    } else {
+      return Math.max(0, subtotal - coupon.discount);
+    }
+  };
+  
+  const getDiscountAmount = () => {
+    if (!coupon?.isValid) return 0;
+    
+    const subtotal = Object.values(registrationData.subjectsAndGrades).reduce((total, subject) => total + subject.price, 0);
+    
+    if (coupon.type === 'percentage') {
+      return subtotal * (coupon.discount / 100);
+    } else {
+      return Math.min(coupon.discount, subtotal);
+    }
   };
 
   const handlePersonalInfoSubmit = () => {
@@ -170,8 +250,8 @@ const Registration = () => {
     setCurrentStep(3);
   };
 
-  const handleDocumentsSubmit = async () => {
-    const { documents, personalInfo } = registrationData;
+  const handleDocumentsSubmit = () => {
+    const { documents } = registrationData;
     if (!documents.timetable || !documents.nationalId || !documents.birthCertificate) {
       toast({
         title: "Missing Documents",
@@ -180,42 +260,7 @@ const Registration = () => {
       });
       return;
     }
-
-    setIsOcrProcessing(true);
-    try {
-      // Run OCR on both documents in parallel
-      const [timetableText, idText] = await Promise.all([
-        extractTextFromFile(documents.timetable as File),
-        extractTextFromFile(documents.nationalId as File)
-      ]);
-
-      // Normalise strings for reliable comparison
-      const normalise = (str: string) => str.replace(/[^a-zA-Z]/g, ' ').toLowerCase();
-      const nameParts = normalise(personalInfo.fullName).split(' ').filter(Boolean);
-
-      const timetableHasAll = nameParts.every(part => normalise(timetableText).includes(part));
-      const idHasAll = nameParts.every(part => normalise(idText).includes(part));
-
-      if (!(timetableHasAll && idHasAll)) {
-        toast({
-          title: "Name Mismatch",
-          description: "The name on your Timetable and National ID does not match the entered full name.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      setCurrentStep(4);
-    } catch (error) {
-      console.error('OCR verification error:', error);
-      toast({
-        title: "OCR Error",
-        description: "Unable to verify names on documents. Please ensure the images are clear and try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsOcrProcessing(false);
-    }
+    setCurrentStep(4);
   };
 
   const handleRegistrationSubmit = async () => {
@@ -228,6 +273,29 @@ const Registration = () => {
     }
   };
 
+  const handleApplyCoupon = () => {
+    if (!paymentData.couponCode.trim()) {
+      toast({
+        title: 'Coupon Code Required',
+        description: 'Please enter a coupon code.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    validateCoupon(paymentData.couponCode.trim());
+  };
+
+  const validateEmail = (email: string) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
+  const validatePhoneNumber = (phone: string) => {
+    // Basic validation for Cameroonian phone numbers (starts with 6, 7, or 2 and is 9 digits)
+    const re = /^[67]\d{8}$/;
+    return re.test(phone);
+  };
+
   const handlePaymentSubmit = async () => {
     if (!registrationId) {
       toast({
@@ -238,23 +306,65 @@ const Registration = () => {
       return;
     }
 
-    if (!paymentData.payerName || !paymentData.phoneNumber || !paymentData.paymentMethod) {
+    // Validate contact information based on preference
+    let contactError = '';
+    if (paymentData.contactPreference === 'email' && !paymentData.email) {
+      contactError = 'Email is required';
+    } else if (paymentData.contactPreference === 'phone' && !paymentData.phoneNumber) {
+      contactError = 'Phone number is required';
+    } else if (paymentData.contactPreference === 'both' && (!paymentData.email || !paymentData.phoneNumber)) {
+      contactError = 'Both email and phone number are required';
+    }
+
+    if (paymentData.email && !validateEmail(paymentData.email)) {
+      contactError = 'Please enter a valid email address';
+    }
+
+    if (paymentData.phoneNumber && !validatePhoneNumber(paymentData.phoneNumber)) {
+      contactError = 'Please enter a valid Cameroonian phone number (e.g., 677123456)';
+    }
+
+    if (contactError) {
       toast({
-        title: "Missing Payment Information",
-        description: "Please fill in all required payment fields.",
+        title: "Contact Information Required",
+        description: contactError,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!paymentData.payerName || !paymentData.paymentMethod) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields.",
         variant: "destructive"
       });
       return;
     }
 
     try {
-      await submitPayment(registrationId, {
+      const payment = await submitPayment(registrationId, {
         ...paymentData,
         amount: calculateTotalCost()
       });
-      setCurrentStep(6);
+      
+      // Navigate to success page with payment details
+      navigate('/payment/success', {
+        state: {
+          registrationId,
+          paymentId: payment.id,
+          amount: calculateTotalCost(),
+          paymentMethod: paymentData.paymentMethod,
+          transactionId: paymentData.transactionId
+        }
+      });
     } catch (error) {
-      console.error('Payment submission failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Payment submission failed';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
     }
   };
 
@@ -373,16 +483,19 @@ const Registration = () => {
               </h1>
               <p className="text-sm text-gray-600 dark:text-gray-300">Step {currentStep} of 6</p>
             </div>
-            <img src="/lovable-uploads/82c1802c-61d7-4b62-bfdc-cbf11c257601.png" alt="Success Guaranteed" className="h-10 w-auto" />
+            <img 
+              src="/lovable-uploads/82c1802c-61d7-4b62-bfdc-cbf11c257601.png" 
+              alt="Success Guaranteed" 
+              className={LOGO_CLASS} 
+            />
           </div>
           <Progress value={(currentStep / 6) * 100} className="mt-4" />
         </div>
       </div>
-
       <div className="container mx-auto px-4 py-8">
         {/* Step 1: Personal Information */}
         {currentStep === 1 && (
-          <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
+          <Card className={CARD_CLASS}>
             <CardHeader>
               <CardTitle>Personal Information</CardTitle>
               <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -505,7 +618,7 @@ const Registration = () => {
 
         {/* Step 2: Subjects & Grades */}
         {currentStep === 2 && (
-          <Card className="max-w-4xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
+          <Card className={`max-w-4xl ${CARD_CLASS.split(' ').slice(1).join(' ')}`}>
             <CardHeader>
               <CardTitle>Select Subjects & Grades</CardTitle>
               <p className="text-gray-600 dark:text-gray-300">Choose your subjects and desired grades. Pricing is per subject.</p>
@@ -568,7 +681,7 @@ const Registration = () => {
 
         {/* Step 3: Document Upload & Services */}
         {currentStep === 3 && (
-          <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
+          <Card className={CARD_CLASS}>
             <CardHeader>
               <CardTitle>Documents & Services</CardTitle>
               <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -580,12 +693,37 @@ const Registration = () => {
                 <h3 className="font-semibold mb-4">Required Documents</h3>
                 <div className="space-y-4">
                   {[
-                    { key: 'timetable', label: 'Personal Exam Timetable' },
-                    { key: 'nationalId', label: 'National ID Card' },
-                    { key: 'birthCertificate', label: 'Birth Certificate' }
-                  ].map(({ key, label }) => (
+                    { 
+                      key: 'timetable', 
+                      label: 'Personal Exam Timetable',
+                      example: null
+                    },
+                    { 
+                      key: 'nationalId', 
+                      label: 'National ID Card',
+                      example: 'example-id-card.jpg'
+                    },
+                    { 
+                      key: 'birthCertificate', 
+                      label: 'Birth Certificate',
+                      example: 'example-birth-certificate.jpg'
+                    }
+                  ].map(({ key, label, example }) => (
                     <div key={key}>
-                      <Label>{label} *</Label>
+                      <div className="flex items-center justify-between">
+                        <Label>{label} *</Label>
+                        {example && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                            onClick={() => window.open(`/example-documents/${example}`, '_blank')}
+                          >
+                            View Example
+                          </Button>
+                        )}
+                      </div>
                       <div className="mt-1 flex items-center space-x-2">
                         <Input
                           type="file"
@@ -662,7 +800,7 @@ const Registration = () => {
                 </div>
               </div>
 
-              <Button onClick={handleDocumentsSubmit} className="w-full" disabled={isLoading || isOcrProcessing}>
+              <Button onClick={handleDocumentsSubmit} className="w-full" disabled={isLoading}>
                 Continue to Review
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -672,7 +810,7 @@ const Registration = () => {
 
         {/* Step 4: Review */}
         {currentStep === 4 && (
-          <Card className="max-w-4xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
+          <Card className={`max-w-4xl ${CARD_CLASS.split(' ').slice(1).join(' ')}`}>
             <CardHeader>
               <CardTitle>Review Your Registration</CardTitle>
             </CardHeader>
@@ -719,15 +857,45 @@ const Registration = () => {
 
         {/* Step 5: Payment */}
         {currentStep === 5 && (
-          <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90">
+          <Card className={CARD_CLASS}>
             <CardHeader>
               <CardTitle>Payment</CardTitle>
-              <p className="text-gray-600 dark:text-gray-300">Complete your payment to process your registration</p>
+              <p className="text-muted-foreground">Complete your payment to process your registration</p>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="text-center p-6 bg-gradient-to-r from-green-50 to-red-50 dark:from-green-900/20 dark:to-red-900/20 rounded-lg">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Total Amount</h3>
-                <p className="text-3xl font-bold text-green-600">{calculateTotalCost().toLocaleString()} XAF</p>
+              <div className="text-center p-6 bg-gradient-to-r from-green-50 to-red-50 dark:from-green-900/20 dark:to-red-900/20 rounded-lg border">
+                <h3 className="text-2xl font-bold text-foreground">Total Amount</h3>
+                {coupon?.isValid && (
+                  <div className="mb-2">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Applied Coupon: {coupon.code} ({coupon.discount}{coupon.type === 'percentage' ? '%' : 'XAF'} off)
+                      <button 
+                        onClick={() => {
+                          setCoupon(null);
+                          setPaymentData(prev => ({ ...prev, couponCode: '' }));
+                        }}
+                        className="ml-2 text-red-500 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </p>
+                  </div>
+                )}
+                <div className="flex items-center justify-center space-x-4">
+                  {coupon?.isValid && (
+                    <p className="text-xl line-through text-gray-500">
+                      {Object.values(registrationData.subjectsAndGrades).reduce((total, subject) => total + subject.price, 0).toLocaleString()} XAF
+                    </p>
+                  )}
+                  <p className={`text-3xl font-bold ${coupon?.isValid ? 'text-green-600' : 'text-green-600'}`}>
+                    {calculateTotalCost().toLocaleString()} XAF
+                  </p>
+                </div>
+                {coupon?.isValid && (
+                  <p className="mt-1 text-green-600 font-medium">
+                    You saved {getDiscountAmount().toLocaleString()} XAF!
+                  </p>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -741,22 +909,125 @@ const Registration = () => {
                   </p>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Payer Name *</Label>
-                    <Input 
-                      placeholder="Your full name" 
-                      value={paymentData.payerName}
-                      onChange={(e) => setPaymentData(prev => ({ ...prev, payerName: e.target.value }))}
-                    />
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Coupon Code (Optional)</Label>
+                      <div className="flex space-x-2">
+                        <Input 
+                          placeholder="Enter coupon code" 
+                          value={paymentData.couponCode}
+                          onChange={(e) => setPaymentData(prev => ({ ...prev, couponCode: e.target.value }))}
+                          disabled={!!coupon?.isValid}
+                        />
+                        <Button 
+                          type="button" 
+                          variant={coupon?.isValid ? 'outline' : 'default'}
+                          onClick={handleApplyCoupon}
+                          disabled={!paymentData.couponCode.trim() || !!coupon?.isValid || isValidatingCoupon}
+                        >
+                          {isValidatingCoupon ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Validating...
+                            </>
+                          ) : coupon?.isValid ? 'Applied' : 'Apply'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-end">
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-xs text-blue-600 dark:text-blue-400"
+                        onClick={() => {
+                          toast({
+                            title: 'How to Get Coupons',
+                            description: 'Contact our support team to get exclusive coupon codes for discounts on your registration.',
+                            variant: 'default',
+                            action: (
+                              <a 
+                                href="https://wa.me/237676078168" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                              >
+                                Contact Support
+                              </a>
+                            )
+                          });
+                        }}
+                      >
+                        View Available Coupons
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <Label>Phone Number *</Label>
-                    <Input 
-                      placeholder="677XXXXXXX" 
-                      value={paymentData.phoneNumber}
-                      onChange={(e) => setPaymentData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                    />
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Payer Name *</Label>
+                      <Input 
+                        placeholder="Your full name" 
+                        value={paymentData.payerName}
+                        onChange={(e) => setPaymentData(prev => ({ ...prev, payerName: e.target.value }))}
+                      />
+                    </div>
+
+                    <div>
+                      <Label>How would you like to be contacted? *</Label>
+                      <Select 
+                        value={paymentData.contactPreference} 
+                        onValueChange={(value: 'email' | 'phone' | 'both') => 
+                          setPaymentData(prev => ({ ...prev, contactPreference: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select contact method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="phone">Phone Call</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="both">Both Phone and Email</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(paymentData.contactPreference === 'email' || paymentData.contactPreference === 'both') && (
+                      <div>
+                        <Label>Email Address {paymentData.contactPreference === 'both' ? '*' : '(Required)'}</Label>
+                        <Input 
+                          type="email"
+                          placeholder="your.email@example.com"
+                          value={paymentData.email}
+                          onChange={(e) => setPaymentData(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </div>
+                    )}
+
+                    {(paymentData.contactPreference === 'phone' || paymentData.contactPreference === 'both') && (
+                      <div>
+                        <Label>Phone Number {paymentData.contactPreference === 'both' ? '*' : '(Required)'}</Label>
+                        <div className="flex">
+                          <div className="flex items-center justify-center px-3 bg-gray-100 dark:bg-gray-800 rounded-l-md border border-r-0 text-sm text-gray-500 dark:text-gray-400">
+                            +237
+                          </div>
+                          <Input 
+                            type="tel"
+                            className="rounded-l-none"
+                            placeholder="677123456"
+                            value={paymentData.phoneNumber}
+                            onChange={(e) => setPaymentData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Enter your 9-digit Cameroonian number (e.g., 677123456)
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -812,90 +1083,69 @@ const Registration = () => {
                 </Button>
               </div>
             </CardContent>
-          </Card>
-        )}
-
-        {/* Step 6: Success */}
-        {currentStep === 6 && (
-          <Card className="max-w-2xl mx-auto backdrop-blur-md bg-white/90 dark:bg-gray-800/90 text-center">
-            <CardContent className="p-8">
-              <div className="text-6xl mb-4">🎉</div>
-              <h2 className="text-2xl font-bold text-green-600 mb-4">Submission Successful!</h2>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Your registration and payment have been submitted for verification. You will be contacted shortly with updates.
-              </p>
-              
-              <div className="space-y-4">
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                  <p className="text-sm text-green-700 dark:text-green-300">
-                    <CheckCircle className="w-5 h-5 inline mr-2" />
-                    Registration ID: <span className="font-mono">{registrationId}</span>
-                  </p>
-                </div>
-                
-                <Button 
-                  onClick={async () => {
+            <CardFooter className="flex flex-col space-y-4 mt-6">
+              <Button 
+                onClick={async () => {
+                  try {
+                    setIsGeneratingPdf(true);
+                    const paymentScreenshotUrl = paymentData.paymentScreenshot 
+                      ? await fileToDataUrl(paymentData.paymentScreenshot)
+                      : undefined;
+                    
                     try {
-                      setIsGeneratingPdf(true);
-                      const paymentScreenshotUrl = paymentData.paymentScreenshot 
-                        ? await fileToDataUrl(paymentData.paymentScreenshot)
-                        : undefined;
+                      // Convert documents object to array of DocumentInfo
+                      const documentsArray = Object.entries(registrationData.documents || {})
+                        .filter(([_, file]) => file !== null && file instanceof File)
+                        .map(([type, file]) => ({
+                          type,
+                          file: file as File,
+                          url: URL.createObjectURL(file as File)
+                        }));
                       
-                      try {
-                        // Convert documents object to array of DocumentInfo
-                        const documentsArray = Object.entries(registrationData.documents || {})
-                          .filter(([_, file]) => file !== null && file instanceof File)
-                          .map(([type, file]) => ({
-                            type,
-                            file: file as File,
-                            url: URL.createObjectURL(file as File)
-                          }));
-                        
-                        console.log('Generating PDF with documents:', documentsArray);
-                        
-                        const { pdfUrl } = await generateRegistrationPDF(
-                          registrationData,
-                          paymentData,
-                          documentsArray,
-                          paymentScreenshotUrl
-                        );
-                        
-                        // Trigger the download
-                        const filename = `registration-receipt-${registrationId}.pdf`;
-                        downloadPDF(pdfUrl, filename);
-                      } catch (err) {
-                        console.error('Error in PDF generation:', err);
-                        throw err; // Re-throw to be caught by the outer catch
-                      }
-                    } catch (error) {
-                      console.error('Error generating PDF:', error);
-                      toast({
-                        title: 'Error',
-                        description: 'Failed to generate PDF. Please try again.',
-                        variant: 'destructive',
-                      });
-                    } finally {
-                      setIsGeneratingPdf(false);
+                      console.log('Generating PDF with documents:', documentsArray);
+                      
+                      const { pdfUrl } = await generateRegistrationPDF(
+                        registrationData,
+                        paymentData,
+                        documentsArray,
+                        paymentScreenshotUrl
+                      );
+                      
+                      // Trigger the download
+                      const filename = `registration-receipt-${registrationId}.pdf`;
+                      downloadPDF(pdfUrl, filename);
+                    } catch (err) {
+                      console.error('Error in PDF generation:', err);
+                      throw err;
                     }
-                  }}
-                  disabled={isGeneratingPdf}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  {isGeneratingPdf ? 'Generating PDF...' : 'Download Registration Receipt'}
+                  } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    toast({
+                      title: 'Error',
+                      description: 'Failed to generate PDF. Please try again.',
+                      variant: 'destructive',
+                    });
+                  } finally {
+                    setIsGeneratingPdf(false);
+                  }
+                }}
+                disabled={isGeneratingPdf}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                {isGeneratingPdf ? 'Generating PDF...' : 'Download Registration Receipt'}
+              </Button>
+              
+              <a href="https://wa.me/237676078168" target="_blank" rel="noopener noreferrer" className="w-full">
+                <Button variant="outline" className="w-full">
+                  Contact Support on WhatsApp
                 </Button>
-                
-                <a href="https://wa.me/237676078168" target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="w-full">
-                    Contact Support on WhatsApp
-                  </Button>
-                </a>
-                
-                <Button variant="ghost" onClick={() => navigate('/')}>
-                  Return to Home
-                </Button>
-              </div>
-            </CardContent>
+              </a>
+              
+              <Button variant="ghost" onClick={() => navigate('/')} className="w-full">
+                Return to Home
+              </Button>
+            </CardFooter>
           </Card>
         )}
       </div>

@@ -161,9 +161,9 @@ const Departments = () => {
   const departments = examLevel === 'CGCE_ORDINARY_LEVEL' ? ordinaryDepartments : advancedDepartments;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/20">
+      <div className="bg-background/80 backdrop-blur-md border-b border-border/20">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -174,8 +174,8 @@ const Departments = () => {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Choose Your Department</h1>
-                <p className="text-gray-600 dark:text-gray-300">Select your field of study to continue registration</p>
+                <h1 className="text-2xl font-bold text-foreground">Choose Your Department</h1>
+                <p className="text-muted-foreground">Select your field of study to continue registration</p>
               </div>
             </div>
             <img src="/lovable-uploads/82c1802c-61d7-4b62-bfdc-cbf11c257601.png" alt="Success Guaranteed" className="h-12 w-auto" />
@@ -189,25 +189,25 @@ const Departments = () => {
           {departments.map((dept, index) => {
             const IconComponent = dept.icon;
             return (
-              <Card key={index} className="group hover:scale-105 transition-all duration-300 backdrop-blur-md bg-white/90 dark:bg-gray-800/90 border-white/20 hover:shadow-2xl">
+              <Card key={index} className="group hover:scale-105 transition-all duration-300 backdrop-blur-md bg-card/90 border-border/20 hover:shadow-2xl">
                 <CardHeader className="text-center pb-4">
                   <div className={`inline-flex items-center justify-center w-20 h-20 rounded-3xl ${dept.color} ${dept.hoverColor} text-white mb-4 group-hover:scale-110 transition-all duration-300 mx-auto`}>
                     <IconComponent className="w-10 h-10" />
                   </div>
-                  <CardTitle className="text-2xl text-gray-900 dark:text-white">{dept.name}</CardTitle>
-                  <p className="text-gray-600 dark:text-gray-300">{dept.description}</p>
+                  <CardTitle className="text-2xl text-foreground">{dept.name}</CardTitle>
+                  <p className="text-muted-foreground">{dept.description}</p>
                   <div className="flex items-center justify-center space-x-2 mt-2">
-                    <Users className="w-4 h-4 text-gray-500" />
-                    <span className="text-sm text-gray-500">{dept.professionals} Professionals</span>
+                    <Users className="w-4 h-4 text-muted-foreground/70" />
+                    <span className="text-sm text-muted-foreground/70">{dept.professionals} Professionals</span>
                   </div>
                 </CardHeader>
                 
                 <CardContent className="pt-0">
                   <div className="mb-6">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Available Subjects:</h4>
+                    <h4 className="font-semibold text-foreground mb-3">Available Subjects:</h4>
                     <div className="grid grid-cols-2 gap-2">
                       {dept.subjects.map((subject, idx) => (
-                        <div key={idx} className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2">
+                        <div key={idx} className="text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
                           {subject}
                         </div>
                       ))}
@@ -226,10 +226,10 @@ const Departments = () => {
         </div>
 
         {/* Contact Support */}
-        <Card className="mt-12 backdrop-blur-md bg-gradient-to-r from-green-500/20 to-red-500/20 border-white/20">
+        <Card className="mt-12 backdrop-blur-md bg-gradient-to-r from-green-500/20 to-red-500/20 border-border/20">
           <CardContent className="p-8 text-center">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Need Help Choosing?</h3>
-            <p className="text-gray-600 dark:text-gray-300 mb-4">
+            <h3 className="text-xl font-bold text-foreground mb-2">Need Help Choosing?</h3>
+            <p className="text-muted-foreground mb-4">
               Contact Mr. Akon Benedict for personalized guidance
             </p>
             <a href="https://wa.me/237676078168" target="_blank" rel="noopener noreferrer">

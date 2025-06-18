@@ -1,8 +1,24 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light" style="color-scheme: light;">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // This script prevents FOUC by setting the theme class before the page renders
+      (function() {
+        // Check for dark mode preference
+        const isDark = localStorage.theme === 'dark' || 
+          (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
+        }
+      })();
+    </script>
     <title>success-slips-cameroon-gce</title>
     <meta name="description" content="Success Slips - Cameroon GCE Examination Resources and Past Questions" />
     <meta name="author" content="Success Guaranteed" />

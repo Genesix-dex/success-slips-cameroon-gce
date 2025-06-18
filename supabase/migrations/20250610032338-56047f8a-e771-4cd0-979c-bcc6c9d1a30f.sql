@@ -1,6 +1,6 @@
 
--- Create table for candidates/registrations
-CREATE TABLE public.registrations (
+-- Create table for candidates/registrations if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.registrations (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   full_name TEXT NOT NULL,
   cin TEXT NOT NULL,
@@ -21,8 +21,8 @@ CREATE TABLE public.registrations (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- Create table for document uploads
-CREATE TABLE public.documents (
+-- Create table for document uploads if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.documents (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   registration_id UUID REFERENCES public.registrations(id) ON DELETE CASCADE,
   document_type TEXT NOT NULL CHECK (document_type IN ('timetable', 'national_id', 'birth_certificate')),
@@ -35,8 +35,8 @@ CREATE TABLE public.documents (
   uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- Create table for payments
-CREATE TABLE public.payments (
+-- Create table for payments if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.payments (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   registration_id UUID REFERENCES public.registrations(id) ON DELETE CASCADE,
   payer_name TEXT NOT NULL,
@@ -51,8 +51,8 @@ CREATE TABLE public.payments (
   verified_at TIMESTAMP WITH TIME ZONE
 );
 
--- Create table for admin users
-CREATE TABLE public.admin_users (
+-- Create table for admin users if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.admin_users (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
@@ -60,62 +60,112 @@ CREATE TABLE public.admin_users (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- Enable Row Level Security
-ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+-- Enable Row Level Security if not already enabled
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'registrations' AND rowsecurity) THEN
+    ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'documents' AND rowsecurity) THEN
+    ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'payments' AND rowsecurity) THEN
+    ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+  END IF;
+  
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'admin_users') AND 
+     NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'admin_users' AND rowsecurity) THEN
+    ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 
 -- RLS Policies for registrations (public read for now, we'll add auth later)
-CREATE POLICY "Anyone can create registrations" 
-  ON public.registrations 
-  FOR INSERT 
-  WITH CHECK (true);
-
-CREATE POLICY "Anyone can view registrations" 
-  ON public.registrations 
-  FOR SELECT 
-  USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'registrations' AND policyname = 'Anyone can create registrations') THEN
+    CREATE POLICY "Anyone can create registrations" 
+    ON public.registrations 
+    FOR INSERT 
+    WITH CHECK (true);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'registrations' AND policyname = 'Anyone can view registrations') THEN
+    CREATE POLICY "Anyone can view registrations" 
+    ON public.registrations 
+    FOR SELECT 
+    USING (true);
+  END IF;
+END $$;
 
 -- RLS Policies for documents
-CREATE POLICY "Anyone can upload documents" 
-  ON public.documents 
-  FOR INSERT 
-  WITH CHECK (true);
-
-CREATE POLICY "Anyone can view documents" 
-  ON public.documents 
-  FOR SELECT 
-  USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'documents' AND policyname = 'Anyone can upload documents') THEN
+    CREATE POLICY "Anyone can upload documents" 
+    ON public.documents 
+    FOR INSERT 
+    WITH CHECK (true);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'documents' AND policyname = 'Anyone can view documents') THEN
+    CREATE POLICY "Anyone can view documents" 
+    ON public.documents 
+    FOR SELECT 
+    USING (true);
+  END IF;
+END $$;
 
 -- RLS Policies for payments
-CREATE POLICY "Anyone can create payments" 
-  ON public.payments 
-  FOR INSERT 
-  WITH CHECK (true);
-
-CREATE POLICY "Anyone can view payments" 
-  ON public.payments 
-  FOR SELECT 
-  USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'payments' AND policyname = 'Anyone can create payments') THEN
+    CREATE POLICY "Anyone can create payments" 
+    ON public.payments 
+    FOR INSERT 
+    WITH CHECK (true);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'payments' AND policyname = 'Anyone can view payments') THEN
+    CREATE POLICY "Anyone can view payments" 
+    ON public.payments 
+    FOR SELECT 
+    USING (true);
+  END IF;
+END $$;
 
 -- RLS Policies for admin users (only authenticated users can access)
-CREATE POLICY "Only authenticated users can view admin users" 
-  ON public.admin_users 
-  FOR SELECT 
-  USING (auth.role() = 'authenticated');
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'admin_users') AND
+     NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_users' AND policyname = 'Only authenticated users can view admin users') THEN
+    CREATE POLICY "Only authenticated users can view admin users" 
+    ON public.admin_users 
+    FOR SELECT 
+    USING (auth.role() = 'authenticated');
+  END IF;
+END $$;
 
--- Create storage bucket for document uploads
+-- Create storage bucket for document uploads if it doesn't exist
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('documents', 'documents', false);
+VALUES ('documents', 'documents', false)
+ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies for documents bucket
-CREATE POLICY "Anyone can upload documents" 
-  ON storage.objects 
-  FOR INSERT 
-  WITH CHECK (bucket_id = 'documents');
-
-CREATE POLICY "Anyone can view documents" 
-  ON storage.objects 
-  FOR SELECT 
-  USING (bucket_id = 'documents');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'objects' AND policyname = 'Anyone can upload documents') THEN
+    CREATE POLICY "Anyone can upload documents" 
+    ON storage.objects 
+    FOR INSERT 
+    WITH CHECK (bucket_id = 'documents');
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'objects' AND policyname = 'Anyone can view documents') THEN
+    CREATE POLICY "Anyone can view documents" 
+    ON storage.objects 
+    FOR SELECT 
+    USING (bucket_id = 'documents');
+  END IF;
+END $$;
