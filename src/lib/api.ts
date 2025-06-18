@@ -1,75 +1,66 @@
-import { supabase } from './supabase';
+
+import { supabase } from '@/integrations/supabase/client';
 
 // Types
 type Coupon = {
   id: string;
   code: string;
-  discount: number;
-  type: 'percentage' | 'fixed';
-  maxUses: number;
-  usedCount: number;
-  validFrom: string;
-  validUntil: string;
-  isActive: boolean;
-  createdAt: string;
-  createdBy: string;
+  discount_value: number;
+  discount_type: 'percentage' | 'fixed';
+  max_uses: number;
+  used_count: number;
+  valid_from: string;
+  valid_until: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
 };
 
 type User = {
   id: string;
   email: string;
-  fullName: string;
+  full_name: string;
   role: 'admin' | 'user' | 'support';
-  status: 'active' | 'inactive' | 'suspended';
-  lastLogin: string | null;
-  createdAt: string;
-  loginCount: number;
+  created_at: string;
 };
 
 type Submission = {
   id: string;
-  reference: string;
-  fullName: string;
-  email: string;
-  examLevel: string;
+  full_name: string;
+  cin: string;
+  exam_level: string;
   department: string;
-  status: 'pending' | 'processing' | 'completed' | 'rejected';
-  createdAt: string;
+  document_verification_status: 'pending' | 'verified' | 'rejected';
+  payment_status: 'pending' | 'completed' | 'failed';
+  created_at: string;
   documents: Array<{
     id: string;
-    type: string;
-    url: string;
+    document_type: string;
+    file_url: string;
   }>;
 };
 
 type Payment = {
   id: string;
-  reference: string;
-  submissionId: string;
+  registration_id: string;
   amount: number;
-  currency: string;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
-  method: string;
-  transactionId: string;
-  paidAt: string | null;
-  createdAt: string;
-  user: {
-    id: string;
-    email: string;
-    fullName: string;
-  };
+  payment_method: string;
+  transaction_id: string;
+  payer_name: string;
+  phone_number: string;
+  created_at: string;
 };
 
 type UploadedFile = {
   id: string;
-  name: string;
-  type: string;
-  size: number;
-  url: string;
-  uploadedBy: string;
-  uploadedAt: string;
-  referenceId: string;
-  referenceType: 'submission' | 'payment' | 'other';
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  file_url: string;
+  document_type: string;
+  uploaded_at: string;
+  registration_id: string;
 };
 
 // Coupon API
@@ -84,7 +75,7 @@ export const couponApi = {
     return data as Coupon[];
   },
 
-  async createCoupon(coupon: Omit<Coupon, 'id' | 'createdAt' | 'createdBy'>): Promise<Coupon> {
+  async createCoupon(coupon: Omit<Coupon, 'id' | 'created_at' | 'created_by'>): Promise<Coupon> {
     const { data, error } = await supabase
       .from('coupons')
       .insert([coupon])
@@ -121,7 +112,7 @@ export const couponApi = {
 export const userApi = {
   async getUsers(): Promise<User[]> {
     const { data, error } = await supabase
-      .from('users')
+      .from('admin_users')
       .select('*')
       .order('created_at', { ascending: false });
     
@@ -131,7 +122,7 @@ export const userApi = {
 
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
     const { data, error } = await supabase
-      .from('users')
+      .from('admin_users')
       .update(updates)
       .eq('id', id)
       .select()
@@ -143,7 +134,7 @@ export const userApi = {
 
   async deleteUser(id: string): Promise<void> {
     const { error } = await supabase
-      .from('users')
+      .from('admin_users')
       .delete()
       .eq('id', id);
     
@@ -155,7 +146,7 @@ export const userApi = {
 export const submissionApi = {
   async getSubmissions(): Promise<Submission[]> {
     const { data, error } = await supabase
-      .from('submissions')
+      .from('registrations')
       .select(`
         *,
         documents (*)
@@ -168,7 +159,7 @@ export const submissionApi = {
 
   async updateSubmission(id: string, updates: Partial<Submission>): Promise<Submission> {
     const { data, error } = await supabase
-      .from('submissions')
+      .from('registrations')
       .update(updates)
       .eq('id', id)
       .select()
@@ -184,21 +175,11 @@ export const paymentApi = {
   async getPayments(): Promise<Payment[]> {
     const { data, error } = await supabase
       .from('payments')
-      .select(`
-        *,
-        user:user_id (id, email, full_name)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return (data as any[]).map(payment => ({
-      ...payment,
-      user: {
-        id: payment.user.id,
-        email: payment.user.email,
-        fullName: payment.user.full_name,
-      },
-    })) as Payment[];
+    return data as Payment[];
   },
 
   async updatePayment(id: string, updates: Partial<Payment>): Promise<Payment> {
@@ -218,7 +199,7 @@ export const paymentApi = {
 export const fileApi = {
   async getFiles(): Promise<UploadedFile[]> {
     const { data, error } = await supabase
-      .from('files')
+      .from('documents')
       .select('*')
       .order('uploaded_at', { ascending: false });
     
@@ -228,7 +209,7 @@ export const fileApi = {
 
   async deleteFile(id: string): Promise<void> {
     const { error } = await supabase
-      .from('files')
+      .from('documents')
       .delete()
       .eq('id', id);
     
@@ -240,27 +221,27 @@ export const fileApi = {
 export const dashboardApi = {
   async getStats() {
     const [
-      { count: users },
-      { count: submissions },
+      { count: registrations },
       { count: payments },
+      { count: documents },
       { count: coupons },
     ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }),
-      supabase.from('submissions').select('*', { count: 'exact', head: true }),
+      supabase.from('registrations').select('*', { count: 'exact', head: true }),
       supabase.from('payments').select('*', { count: 'exact', head: true }),
-      supabase.from('coupons').select('*', { count: 'exact', head: true, where: { is_active: true } }),
+      supabase.from('documents').select('*', { count: 'exact', head: true }),
+      supabase.from('coupons').select('*', { count: 'exact', head: true }),
     ]);
 
-    const { data: revenueData } = await supabase
+    const { data: completedPayments } = await supabase
       .from('payments')
       .select('amount')
       .eq('status', 'completed');
 
-    const totalRevenue = revenueData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+    const totalRevenue = completedPayments?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
 
     return {
-      users: users || 0,
-      submissions: submissions || 0,
+      users: registrations || 0,
+      submissions: registrations || 0,
       revenue: totalRevenue,
       activeCoupons: coupons || 0,
     };

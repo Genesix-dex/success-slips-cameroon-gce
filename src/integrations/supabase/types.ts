@@ -33,6 +33,51 @@ export type Database = {
         }
         Relationships: []
       }
+      coupons: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_type: string
+          discount_value: number
+          id: string
+          is_active: boolean | null
+          max_uses: number | null
+          updated_at: string
+          used_count: number | null
+          valid_from: string
+          valid_until: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          discount_type: string
+          discount_value: number
+          id?: string
+          is_active?: boolean | null
+          max_uses?: number | null
+          updated_at?: string
+          used_count?: number | null
+          valid_from?: string
+          valid_until: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          discount_type?: string
+          discount_value?: number
+          id?: string
+          is_active?: boolean | null
+          max_uses?: number | null
+          updated_at?: string
+          used_count?: number | null
+          valid_from?: string
+          valid_until?: string
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           document_type: string
@@ -79,6 +124,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      file_metadata: {
+        Row: {
+          created_at: string
+          id: string
+          mime_type: string
+          name: string
+          reference_id: string | null
+          reference_type: string | null
+          size_bytes: number
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mime_type: string
+          name: string
+          reference_id?: string | null
+          reference_type?: string | null
+          size_bytes: number
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mime_type?: string
+          name?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          size_bytes?: number
+          uploaded_by?: string | null
+        }
+        Relationships: []
       }
       payments: {
         Row: {
@@ -196,12 +274,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: { role_name: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

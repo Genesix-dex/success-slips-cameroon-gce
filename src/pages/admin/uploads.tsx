@@ -1,5 +1,6 @@
+
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Search, Download, Trash2, FileText, FileImage, FileArchive, File } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface UploadedFile {
   id: string;
@@ -46,52 +49,34 @@ const formatFileSize = (bytes: number): string => {
 export default function UploadsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const { toast } = useToast();
 
-  // Fetch uploaded files from Supabase Storage
+  // Fetch uploaded files from documents table
   const { data: files = [], isLoading, refetch } = useQuery<UploadedFile[]>({
     queryKey: ['uploads', typeFilter],
     queryFn: async () => {
       try {
-        // First get all files from the bucket
-        const { data: files, error } = await supabase.storage
-          .from('uploads')
-          .list('', {
-            limit: 100,
-            offset: 0,
-            sortBy: { column: 'created_at', order: 'desc' },
-          });
+        const { data: documents, error } = await supabase
+          .from('documents')
+          .select(`
+            *,
+            registrations!inner(full_name)
+          `)
+          .order('uploaded_at', { ascending: false });
 
         if (error) throw error;
 
-        // Get public URLs and metadata for each file
-        const filesWithData = await Promise.all(
-          files.map(async (file) => {
-            const { data: { publicUrl } } = supabase.storage
-              .from('uploads')
-              .getPublicUrl(file.name);
-
-            // Get file metadata if available
-            const { data: metadata } = await supabase
-              .from('file_metadata')
-              .select('*')
-              .eq('name', file.name)
-              .single();
-
-            return {
-              id: file.id || Math.random().toString(36).substring(2, 9),
-              name: file.name,
-              type: file.metadata?.mimetype || 'application/octet-stream',
-              size: file.metadata?.size || 0,
-              url: publicUrl,
-              uploadedBy: metadata?.uploaded_by || 'Unknown',
-              uploadedAt: metadata?.created_at || new Date().toISOString(),
-              referenceId: metadata?.reference_id || 'N/A',
-              referenceType: (metadata?.reference_type as 'submission' | 'payment' | 'other') || 'other',
-            };
-          })
-        );
-
-        return filesWithData;
+        return documents.map((doc) => ({
+          id: doc.id,
+          name: doc.file_name,
+          type: doc.file_type,
+          size: doc.file_size,
+          url: doc.file_url,
+          uploadedBy: doc.registrations?.full_name || 'Unknown',
+          uploadedAt: doc.uploaded_at,
+          referenceId: doc.registration_id || 'N/A',
+          referenceType: 'submission' as const,
+        }));
       } catch (err) {
         console.error('Error fetching uploads:', err);
         throw err;
@@ -134,26 +119,13 @@ export default function UploadsPage() {
   };
 
   const deleteFile = useMutation({
-    mutationFn: async (file: UploadedFile) => {
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from('uploads')
-        .remove([file.name]);
-
-      if (storageError) throw storageError;
-
-      // Delete metadata if exists
-      const { error: metadataError } = await supabase
-        .from('file_metadata')
+    mutationFn: async (fileId: string) => {
+      const { error } = await supabase
+        .from('documents')
         .delete()
-        .eq('name', file.name);
+        .eq('id', fileId);
 
-      // It's okay if metadata doesn't exist
-      if (metadataError && metadataError.code !== 'PGRST116') {
-        console.warn('Could not delete file metadata:', metadataError);
-      }
-
-      return true;
+      if (error) throw error;
     },
     onSuccess: () => {
       toast({
@@ -174,7 +146,7 @@ export default function UploadsPage() {
 
   const handleDelete = (file: UploadedFile) => {
     if (window.confirm(`Are you sure you want to delete "${file.name}"? This action cannot be undone.`)) {
-      deleteFile.mutate(file);
+      deleteFile.mutate(file.id);
     }
   };
 
@@ -299,7 +271,7 @@ export default function UploadsPage() {
                             variant="ghost"
                             size="icon"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(file.id)}
+                            onClick={() => handleDelete(file)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

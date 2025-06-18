@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,31 +8,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Search, Filter, Check, X, Clock, AlertCircle, Download } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Payment {
   id: string;
   reference: string;
-  submissionId: string;
+  registrationId: string;
   amount: number;
-  currency: string;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
   method: string;
   transactionId: string;
-  paidAt: string | null;
   createdAt: string;
-  user: {
-    id: string;
-    email: string;
-    fullName: string;
-  };
+  payerName: string;
+  phoneNumber: string;
 }
 
 export default function PaymentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const { toast } = useToast();
 
   // Fetch payments from Supabase
-  const { data: payments = [], isLoading, error } = useQuery<Payment[]>({
+  const { data: payments = [], isLoading } = useQuery<Payment[]>({
     queryKey: ['payments', statusFilter],
     queryFn: async () => {
       try {
@@ -39,7 +38,7 @@ export default function PaymentsPage() {
           .from('payments')
           .select(`
             *,
-            user:user_id (id, email, full_name)
+            registrations!inner(full_name)
           `)
           .order('created_at', { ascending: false });
 
@@ -47,20 +46,15 @@ export default function PaymentsPage() {
 
         return data.map(payment => ({
           id: payment.id,
-          reference: payment.reference || `PAY-${payment.id.substring(0, 8)}`,
-          submissionId: payment.submission_id,
+          reference: `PAY-${payment.id.substring(0, 8).toUpperCase()}`,
+          registrationId: payment.registration_id || '',
           amount: payment.amount || 0,
-          currency: payment.currency || 'XAF',
           status: payment.status || 'pending',
           method: payment.payment_method || 'unknown',
           transactionId: payment.transaction_id || 'N/A',
-          paidAt: payment.paid_at,
           createdAt: payment.created_at || new Date().toISOString(),
-          user: {
-            id: payment.user?.id || 'unknown',
-            email: payment.user?.email || 'N/A',
-            fullName: payment.user?.full_name || 'Unknown User',
-          },
+          payerName: payment.payer_name || 'Unknown',
+          phoneNumber: payment.phone_number || 'N/A',
         }));
       } catch (err) {
         console.error('Error fetching payments:', err);
@@ -72,7 +66,7 @@ export default function PaymentsPage() {
   const filteredPayments = payments.filter(payment => {
     const matchesSearch = 
       payment.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      payment.payerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       payment.transactionId.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
@@ -120,29 +114,25 @@ export default function PaymentsPage() {
 
   const handleExport = async () => {
     try {
-      // Format data for CSV
       const headers = [
-        'Reference', 'User', 'Email', 'Amount', 'Currency', 
-        'Status', 'Method', 'Transaction ID', 'Paid At', 'Created At'
+        'Reference', 'Payer Name', 'Phone', 'Amount', 
+        'Status', 'Method', 'Transaction ID', 'Created At'
       ];
       
       const csvContent = [
         headers.join(','),
         ...payments.map(payment => [
           `"${payment.reference}"`,
-          `"${payment.user.fullName}"`,
-          `"${payment.user.email}"`,
+          `"${payment.payerName}"`,
+          `"${payment.phoneNumber}"`,
           payment.amount,
-          payment.currency,
           payment.status,
           payment.method,
           `"${payment.transactionId}"`,
-          payment.paidAt || 'N/A',
           payment.createdAt
         ].join(','))
       ].join('\n');
       
-      // Create and trigger download
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -167,11 +157,11 @@ export default function PaymentsPage() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
+      currency: 'XAF',
+      minimumFractionDigits: 0,
     }).format(amount);
   };
 
@@ -256,7 +246,7 @@ export default function PaymentsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Reference</TableHead>
-                    <TableHead>User</TableHead>
+                    <TableHead>Payer</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Method</TableHead>
                     <TableHead>Transaction ID</TableHead>
@@ -275,14 +265,14 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <span>{payment.user.fullName}</span>
+                          <span>{payment.payerName}</span>
                           <span className="text-xs text-muted-foreground">
-                            {payment.user.email}
+                            {payment.phoneNumber}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">
-                        {formatCurrency(payment.amount, payment.currency)}
+                        {formatCurrency(payment.amount)}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
@@ -296,16 +286,13 @@ export default function PaymentsPage() {
                         {getStatusBadge(payment.status)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {payment.paidAt 
-                          ? format(new Date(payment.paidAt), 'MMM d, yyyy HH:mm')
-                          : format(new Date(payment.createdAt), 'MMM d, yyyy HH:mm')}
+                        {format(new Date(payment.createdAt), 'MMM d, yyyy HH:mm')}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            // Implement view details
                             console.log('View payment:', payment.id);
                           }}
                         >

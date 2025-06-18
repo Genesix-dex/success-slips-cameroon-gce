@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -93,33 +94,43 @@ export const useRegistration = () => {
         throw registrationError;
       }
 
-      // Upload documents in parallel
-      const documentUploads = await Promise.all([
-        registrationData.documents.timetable && uploadDocument(
-          registrationData.documents.timetable, 
-          registration.id, 
-          'timetable'
-        ),
-        registrationData.documents.nationalId && uploadDocument(
-          registrationData.documents.nationalId, 
-          registration.id, 
-          'national_id'
-        ),
-        registrationData.documents.birthCertificate && uploadDocument(
-          registrationData.documents.birthCertificate, 
-          registration.id, 
-          'birth_certificate'
-        ),
-      ].filter(Boolean));
+      // Upload documents in parallel if they exist
+      const documentPromises = [];
+      
+      if (registrationData.documents.timetable) {
+        documentPromises.push(
+          uploadDocument(registrationData.documents.timetable, registration.id, 'timetable')
+            .then(docData => ({ ...docData, document_type: 'timetable' }))
+        );
+      }
+      
+      if (registrationData.documents.nationalId) {
+        documentPromises.push(
+          uploadDocument(registrationData.documents.nationalId, registration.id, 'national_id')
+            .then(docData => ({ ...docData, document_type: 'national_id' }))
+        );
+      }
+      
+      if (registrationData.documents.birthCertificate) {
+        documentPromises.push(
+          uploadDocument(registrationData.documents.birthCertificate, registration.id, 'birth_certificate')
+            .then(docData => ({ ...docData, document_type: 'birth_certificate' }))
+        );
+      }
 
-      // Insert document records
-      if (documentUploads.length > 0) {
+      if (documentPromises.length > 0) {
+        const documentUploads = await Promise.all(documentPromises);
+
+        // Insert document records
         const { error: documentsError } = await supabase
           .from('documents')
-          .insert(documentUploads.map((upload, index) => ({
+          .insert(documentUploads.map(upload => ({
             registration_id: registration.id,
-            document_type: ['timetable', 'national_id', 'birth_certificate'][index],
-            ...upload
+            document_type: upload.document_type,
+            file_name: upload.file_name,
+            file_url: upload.file_url,
+            file_size: upload.file_size,
+            file_type: upload.file_type
           })));
 
         if (documentsError) {
