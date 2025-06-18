@@ -1,13 +1,15 @@
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
-import { Search, Filter, Check, X, Clock, AlertCircle, Download } from 'lucide-react';
+import { Search, Filter, Check, X, Clock, AlertCircle, Download, Eye } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,12 +24,17 @@ interface Payment {
   createdAt: string;
   payerName: string;
   phoneNumber: string;
+  adminNotes?: string;
+  paymentScreenshotUrl?: string;
 }
 
 export default function PaymentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [adminNotes, setAdminNotes] = useState('');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch payments from Supabase
   const { data: payments = [], isLoading } = useQuery<Payment[]>({
@@ -55,6 +62,8 @@ export default function PaymentsPage() {
           createdAt: payment.created_at || new Date().toISOString(),
           payerName: payment.payer_name || 'Unknown',
           phoneNumber: payment.phone_number || 'N/A',
+          adminNotes: payment.admin_notes || '',
+          paymentScreenshotUrl: payment.payment_screenshot_url || '',
         }));
       } catch (err) {
         console.error('Error fetching payments:', err);
@@ -62,6 +71,55 @@ export default function PaymentsPage() {
       }
     },
   });
+
+  // Mutation for updating payment status
+  const updatePaymentMutation = useMutation({
+    mutationFn: async ({ paymentId, status, notes }: { paymentId: string; status: string; notes?: string }) => {
+      const { error } = await supabase
+        .from('payments')
+        .update({ 
+          status, 
+          admin_notes: notes,
+          verified_at: status === 'completed' ? new Date().toISOString() : null
+        })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      toast({
+        title: 'Payment Updated',
+        description: 'Payment status has been updated successfully.',
+      });
+      setSelectedPayment(null);
+      setAdminNotes('');
+    },
+    onError: (error) => {
+      console.error('Error updating payment:', error);
+      toast({
+        title: 'Update Failed',
+        description: 'Failed to update payment status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleApprovePayment = (payment: Payment) => {
+    updatePaymentMutation.mutate({
+      paymentId: payment.id,
+      status: 'completed',
+      notes: adminNotes || 'Payment approved by admin'
+    });
+  };
+
+  const handleRejectPayment = (payment: Payment) => {
+    updatePaymentMutation.mutate({
+      paymentId: payment.id,
+      status: 'failed',
+      notes: adminNotes || 'Payment rejected by admin'
+    });
+  };
 
   const filteredPayments = payments.filter(payment => {
     const matchesSearch = 
@@ -165,13 +223,23 @@ export default function PaymentsPage() {
     }).format(amount);
   };
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Payments</h1>
+          <h1 className="text-3xl font-bold">Payments Management</h1>
           <p className="text-muted-foreground">
-            View and manage payment transactions
+            Review and approve payment transactions
           </p>
         </div>
         <Button 
@@ -216,11 +284,7 @@ export default function PaymentsPage() {
           <CardTitle>Payment Transactions</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            </div>
-          ) : filteredPayments.length === 0 ? (
+          {filteredPayments.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">
                 {searchTerm || statusFilter !== 'all' 
@@ -289,15 +353,98 @@ export default function PaymentsPage() {
                         {format(new Date(payment.createdAt), 'MMM d, yyyy HH:mm')}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            console.log('View payment:', payment.id);
-                          }}
-                        >
-                          View
-                        </Button>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedPayment(payment);
+                                setAdminNotes(payment.adminNotes || '');
+                              }}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              Review
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Payment Review - {payment.reference}</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className="text-sm font-medium">Payer Name</label>
+                                  <p className="text-sm text-muted-foreground">{payment.payerName}</p>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium">Phone Number</label>
+                                  <p className="text-sm text-muted-foreground">{payment.phoneNumber}</p>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium">Amount</label>
+                                  <p className="text-sm text-muted-foreground">{formatCurrency(payment.amount)}</p>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium">Payment Method</label>
+                                  <p className="text-sm text-muted-foreground capitalize">{payment.method}</p>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium">Transaction ID</label>
+                                  <p className="text-sm text-muted-foreground font-mono">{payment.transactionId}</p>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium">Current Status</label>
+                                  <div className="mt-1">{getStatusBadge(payment.status)}</div>
+                                </div>
+                              </div>
+
+                              {payment.paymentScreenshotUrl && (
+                                <div>
+                                  <label className="text-sm font-medium">Payment Screenshot</label>
+                                  <div className="mt-2">
+                                    <img 
+                                      src={payment.paymentScreenshotUrl} 
+                                      alt="Payment Screenshot" 
+                                      className="max-w-full h-48 object-contain border rounded"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              <div>
+                                <label className="text-sm font-medium">Admin Notes</label>
+                                <Textarea
+                                  value={adminNotes}
+                                  onChange={(e) => setAdminNotes(e.target.value)}
+                                  placeholder="Add notes about this payment..."
+                                  className="mt-1"
+                                />
+                              </div>
+
+                              {payment.status === 'pending' && (
+                                <div className="flex gap-2 pt-4">
+                                  <Button
+                                    onClick={() => handleApprovePayment(payment)}
+                                    disabled={updatePaymentMutation.isPending}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    <Check className="h-4 w-4 mr-1" />
+                                    Approve Payment
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleRejectPayment(payment)}
+                                    disabled={updatePaymentMutation.isPending}
+                                    variant="destructive"
+                                  >
+                                    <X className="h-4 w-4 mr-1" />
+                                    Reject Payment
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
                       </TableCell>
                     </TableRow>
                   ))}
