@@ -92,7 +92,7 @@ const Index = () => {
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10">
-            Your one-stop platform for GCE past questions, study materials, and exam preparation resources.
+            Your one-stop platform for GCE past questions, study materials, follow-up, grade modification and exam preparation resources.
             Join thousands of students who have excelled in their exams with our comprehensive study materials.
           </p>
           
@@ -247,8 +247,8 @@ const Index = () => {
                     </div>
                     <div>
                       <h4 className="font-medium text-foreground">Email</h4>
-                      <a href="mailto:info@successguaranteed.cm" className="text-muted-foreground hover:text-foreground transition-colors">
-                        info@successguaranteed.cm
+                      <a href="mailto:ratsmart92@gmail.com" className="text-muted-foreground hover:text-foreground transition-colors">
+                        ratsmart92@gmail.com
                       </a>
                     </div>
                   </div>
