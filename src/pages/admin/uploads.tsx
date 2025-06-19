@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,14 +13,16 @@ import { useToast } from '@/hooks/use-toast';
 
 interface UploadedFile {
   id: string;
-  name: string;
-  type: string;
-  size: number;
-  url: string;
-  uploadedBy: string;
-  uploadedAt: string;
-  referenceId: string;
-  referenceType: 'submission' | 'payment' | 'other';
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  file_url: string;
+  document_type: string;
+  uploaded_at: string;
+  registration_id: string;
+  registrations?: {
+    full_name: string;
+  };
 }
 
 const getFileIcon = (mimeType: string) => {
@@ -50,6 +52,7 @@ export default function UploadsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch uploaded files from documents table
   const { data: files = [], isLoading, refetch } = useQuery<UploadedFile[]>({
@@ -66,17 +69,7 @@ export default function UploadsPage() {
 
         if (error) throw error;
 
-        return documents.map((doc) => ({
-          id: doc.id,
-          name: doc.file_name,
-          type: doc.file_type,
-          size: doc.file_size,
-          url: doc.file_url,
-          uploadedBy: doc.registrations?.full_name || 'Unknown',
-          uploadedAt: doc.uploaded_at,
-          referenceId: doc.registration_id || 'N/A',
-          referenceType: 'submission' as const,
-        }));
+        return documents || [];
       } catch (err) {
         console.error('Error fetching uploads:', err);
         throw err;
@@ -86,15 +79,15 @@ export default function UploadsPage() {
 
   const filteredFiles = files.filter(file => {
     const matchesSearch = 
-      file.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      file.uploadedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      file.referenceId.toLowerCase().includes(searchTerm.toLowerCase());
+      file.file_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (file.registrations?.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      file.registration_id.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesType = typeFilter === 'all' || file.type.includes(typeFilter) || 
+    const matchesType = typeFilter === 'all' || file.file_type.includes(typeFilter) || 
       (typeFilter === 'document' && 
-        (file.type.includes('pdf') || 
-         file.type.includes('doc') || 
-         file.type.includes('text')));
+        (file.file_type.includes('pdf') || 
+         file.file_type.includes('doc') || 
+         file.file_type.includes('text')));
     
     return matchesSearch && matchesType;
   });
@@ -102,8 +95,8 @@ export default function UploadsPage() {
   const handleDownload = (file: UploadedFile) => {
     try {
       const link = document.createElement('a');
-      link.href = file.url;
-      link.download = file.name;
+      link.href = file.file_url;
+      link.download = file.file_name;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -118,12 +111,27 @@ export default function UploadsPage() {
     }
   };
 
+  // Delete file mutation
   const deleteFile = useMutation({
-    mutationFn: async (fileId: string) => {
+    mutationFn: async (file: UploadedFile) => {
+      // First, delete from storage if it's in our uploads bucket
+      if (file.file_url.includes('/storage/v1/object/public/uploads/')) {
+        const filePath = file.file_url.split('/uploads/')[1];
+        const { error: storageError } = await supabase.storage
+          .from('uploads')
+          .remove([filePath]);
+        
+        if (storageError) {
+          console.warn('Storage deletion failed:', storageError);
+          // Continue anyway, as the database record should still be deleted
+        }
+      }
+
+      // Then delete from database
       const { error } = await supabase
         .from('documents')
         .delete()
-        .eq('id', fileId);
+        .eq('id', file.id);
 
       if (error) throw error;
     },
@@ -132,7 +140,7 @@ export default function UploadsPage() {
         title: 'File deleted',
         description: 'The file has been successfully deleted.',
       });
-      refetch();
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
     },
     onError: (error) => {
       console.error('Delete failed:', error);
@@ -145,8 +153,8 @@ export default function UploadsPage() {
   });
 
   const handleDelete = (file: UploadedFile) => {
-    if (window.confirm(`Are you sure you want to delete "${file.name}"? This action cannot be undone.`)) {
-      deleteFile.mutate(file.id);
+    if (window.confirm(`Are you sure you want to delete "${file.file_name}"? This action cannot be undone.`)) {
+      deleteFile.mutate(file);
     }
   };
 
@@ -222,7 +230,7 @@ export default function UploadsPage() {
                     <TableHead>File</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Size</TableHead>
-                    <TableHead>Reference</TableHead>
+                    <TableHead>Document Type</TableHead>
                     <TableHead>Uploaded By</TableHead>
                     <TableHead>Uploaded At</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -233,30 +241,30 @@ export default function UploadsPage() {
                     <TableRow key={file.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          {getFileIcon(file.type)}
+                          {getFileIcon(file.file_type)}
                           <span className="truncate max-w-[200px] inline-block">
-                            {file.name}
+                            {file.file_name}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {file.type.split('/')[1] || file.type}
+                          {file.file_type.split('/')[1] || file.file_type}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {formatFileSize(file.size)}
+                        {formatFileSize(file.file_size)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="font-mono text-xs">
-                          {file.referenceId}
+                        <Badge variant="outline" className="capitalize">
+                          {file.document_type}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {file.uploadedBy}
+                        {file.registrations?.full_name || 'Unknown'}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(file.uploadedAt), 'MMM d, yyyy')}
+                        {format(new Date(file.uploaded_at), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -272,6 +280,7 @@ export default function UploadsPage() {
                             size="icon"
                             className="text-destructive hover:text-destructive"
                             onClick={() => handleDelete(file)}
+                            disabled={deleteFile.isPending}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

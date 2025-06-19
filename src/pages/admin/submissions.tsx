@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Search, Download, Eye, Filter } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Submission {
   id: string;
@@ -21,6 +22,10 @@ interface Submission {
   department?: string;
   documents?: DocumentType[];
   phone?: string;
+  cin: string;
+  payment_status: string;
+  document_verification_status: string;
+  total_cost: number;
 }
 
 interface Document {
@@ -37,14 +42,20 @@ export default function SubmissionsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Fetch registrations
-  const { data: registrations = [], isLoading, error } = useQuery<Submission[]>({
+  const { data: registrations = [], isLoading, error, refetch } = useQuery<Submission[]>({
     queryKey: ['registrations', statusFilter],
     queryFn: async (): Promise<Submission[]> => {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('registrations')
           .select('*')
           .order('created_at', { ascending: false });
+
+        if (statusFilter !== 'all') {
+          query = query.eq('payment_status', statusFilter);
+        }
+        
+        const { data, error } = await query;
         
         if (error) {
           console.error('Error fetching registrations:', error);
@@ -53,19 +64,22 @@ export default function SubmissionsPage() {
         
         console.log('Fetched registrations:', data);
         
-        // Map the database fields to your Submission type
         return (data || []).map(reg => ({
           id: reg.id,
           reference_number: reg.reference_number || `REG-${reg.id.substring(0, 8)}`,
           full_name: reg.full_name || 'N/A',
           email: reg.email || 'N/A',
-          status: reg.status || 'pending',
+          status: reg.payment_status || 'pending',
           amount_paid: reg.amount_paid || 0,
           created_at: reg.created_at || new Date().toISOString(),
           exam_level: reg.exam_level,
           department: reg.department,
           documents: reg.documents || [],
-          phone: reg.phone
+          phone: reg.phone,
+          cin: reg.cin,
+          payment_status: reg.payment_status,
+          document_verification_status: reg.document_verification_status,
+          total_cost: reg.total_cost,
         }));
       } catch (err) {
         console.error('Error in queryFn:', err);
@@ -81,9 +95,10 @@ export default function SubmissionsPage() {
     const matchesSearch = 
       reference.toLowerCase().includes(searchLower) ||
       (registration.full_name || '').toLowerCase().includes(searchLower) ||
-      (registration.email || '').toLowerCase().includes(searchLower);
+      (registration.email || '').toLowerCase().includes(searchLower) ||
+      (registration.cin || '').toLowerCase().includes(searchLower);
     
-    const matchesStatus = statusFilter === 'all' || registration.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || registration.payment_status === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
@@ -93,6 +108,7 @@ export default function SubmissionsPage() {
       pending: { label: 'Pending', variant: 'bg-yellow-100 text-yellow-800' },
       processing: { label: 'Processing', variant: 'bg-blue-100 text-blue-800' },
       completed: { label: 'Completed', variant: 'bg-green-100 text-green-800' },
+      approved: { label: 'Approved', variant: 'bg-green-100 text-green-800' },
       rejected: { label: 'Rejected', variant: 'bg-red-100 text-red-800' },
     } as const;
 
@@ -105,18 +121,36 @@ export default function SubmissionsPage() {
     );
   };
 
-  const handleDownloadAll = (submission: Submission) => {
-    if (!submission.documents?.length) return;
-    
-    submission.documents.forEach(doc => {
-      const docUrl = typeof doc === 'string' ? doc : doc.url;
-      if (docUrl) {
-        window.open(docUrl, '_blank');
-      }
-    });
-  };
+  const handleDownloadAll = async (submission: Submission) => {
+    try {
+      // Fetch associated documents
+      const { data: documents, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('registration_id', submission.id);
 
-  const { refetch } = useQuery({ queryKey: ['submissions'] });
+      if (error) throw error;
+
+      if (!documents?.length) {
+        console.log('No documents found for this submission');
+        return;
+      }
+      
+      documents.forEach(doc => {
+        if (doc.file_url) {
+          const link = document.createElement('a');
+          link.href = doc.file_url;
+          link.download = doc.file_name || `document-${doc.id}`;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      });
+    } catch (err) {
+      console.error('Error downloading documents:', err);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -193,6 +227,7 @@ export default function SubmissionsPage() {
               <option value="pending">Pending</option>
               <option value="processing">Processing</option>
               <option value="completed">Completed</option>
+              <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
             </select>
           </div>
@@ -204,11 +239,7 @@ export default function SubmissionsPage() {
           <CardTitle>All Submissions</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            </div>
-          ) : filteredSubmissions.length === 0 ? (
+          {filteredSubmissions.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">
                 {searchTerm || statusFilter !== 'all' 
@@ -236,9 +267,11 @@ export default function SubmissionsPage() {
                     <TableHead>Reference</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>CIN</TableHead>
                     <TableHead>Exam Level</TableHead>
                     <TableHead>Department</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Payment Status</TableHead>
+                    <TableHead>Total Cost</TableHead>
                     <TableHead>Submitted</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -255,6 +288,9 @@ export default function SubmissionsPage() {
                       <TableCell className="text-sm text-muted-foreground">
                         {submission.email}
                       </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {submission.cin}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {submission.exam_level}
@@ -266,7 +302,10 @@ export default function SubmissionsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(submission.status)}
+                        {getStatusBadge(submission.payment_status)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        ${submission.total_cost}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {format(new Date(submission.created_at), 'MMM d, yyyy')}
@@ -277,7 +316,6 @@ export default function SubmissionsPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => {
-                              // Implement view details
                               console.log('View submission:', submission.id);
                             }}
                           >
@@ -288,34 +326,9 @@ export default function SubmissionsPage() {
                             size="icon"
                             title="Download all documents"
                             onClick={() => handleDownloadAll(submission)}
-                            disabled={!submission.documents?.length}
                           >
                             <Download className="h-4 w-4" />
                           </Button>
-                          {submission.documents?.map((doc, index) => {
-                            if (!doc) return null;
-                            
-                            const docUrl = typeof doc === 'string' ? doc : doc.url;
-                            if (!docUrl) return null;
-                            
-                            const docName = typeof doc === 'string' 
-                              ? `Document ${index + 1}` 
-                              : doc.name || `Document ${index + 1}`;
-                            
-                            return (
-                              <a
-                                key={index}
-                                href={docUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center text-sm text-blue-600 hover:underline ml-2"
-                                title={`Download ${docName}`}
-                              >
-                                <Download className="h-4 w-4 mr-1" />
-                                {docName}
-                              </a>
-                            );
-                          })}
                         </div>
                       </TableCell>
                     </TableRow>

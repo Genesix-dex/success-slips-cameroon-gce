@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,138 +8,137 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { toast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { Loader2, Plus, Trash2, Edit } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Coupon {
   id: string;
   code: string;
-  discount: number;
-  type: 'percentage' | 'fixed';
-  maxUses: number;
-  usedCount: number;
-  validFrom: string;
-  validUntil: string;
-  isActive: boolean;
-  createdAt: string;
-  createdBy: string;
+  discount_value: number;
+  discount_type: 'percentage' | 'fixed';
+  max_uses?: number;
+  used_count: number;
+  valid_from: string;
+  valid_until: string;
+  is_active: boolean;
+  created_at: string;
+  created_by?: string;
 }
 
 export default function CouponsPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
     code: `CODE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-    discount: 10,
-    type: 'percentage' as 'percentage' | 'fixed',
-    maxUses: 100,
-    validFrom: new Date().toISOString().split('T')[0],
-    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    discount_value: 10,
+    discount_type: 'percentage' as 'percentage' | 'fixed',
+    max_uses: 100,
+    valid_from: new Date().toISOString().split('T')[0],
+    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
 
   // Fetch coupons from Supabase
   const { data: coupons = [], isLoading } = useQuery<Coupon[]>({
     queryKey: ['coupons'],
     queryFn: async () => {
-      try {
-        const { data, error } = await supabase
-          .from('coupons')
-          .select('*')
-          .order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-
-        return data.map(coupon => ({
-          id: coupon.id,
-          code: coupon.code,
-          discount: coupon.discount_value,
-          type: coupon.discount_type,
-          maxUses: coupon.max_uses || 0,
-          usedCount: coupon.used_count || 0,
-          validFrom: coupon.valid_from,
-          validUntil: coupon.valid_until,
-          isActive: coupon.is_active,
-          createdAt: coupon.created_at,
-          createdBy: coupon.created_by || 'system',
-        }));
-      } catch (err) {
-        console.error('Error fetching coupons:', err);
-        throw err;
-      }
+      if (error) throw error;
+      return data || [];
     },
   });
 
   // Create coupon mutation
   const createCoupon = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // Replace with actual API call
-      return new Promise<Coupon>((resolve) => {
-        setTimeout(() => {
-          resolve({
-            id: Math.random().toString(36).substring(2, 9),
-            ...data,
-            usedCount: 0,
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            createdBy: 'admin@example.com',
-          });
-        }, 1000);
-      });
+      const { data: newCoupon, error } = await supabase
+        .from('coupons')
+        .insert([{
+          code: data.code,
+          discount_value: data.discount_value,
+          discount_type: data.discount_type,
+          max_uses: data.max_uses,
+          valid_from: data.valid_from,
+          valid_until: data.valid_until,
+          is_active: true,
+          used_count: 0,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return newCoupon;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
       setIsCreating(false);
       setFormData({
         code: `CODE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-        discount: 10,
-        type: 'percentage',
-        maxUses: 100,
-        validFrom: new Date().toISOString().split('T')[0],
-        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        discount_value: 10,
+        discount_type: 'percentage',
+        max_uses: 100,
+        valid_from: new Date().toISOString().split('T')[0],
+        valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       });
       toast({
         title: 'Success',
         description: 'Coupon created successfully',
       });
     },
+    onError: (error) => {
+      console.error('Create coupon error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create coupon. Please try again.',
+        variant: 'destructive',
+      });
+    },
   });
 
   // Toggle coupon status
   const toggleCouponStatus = useMutation({
-    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      // Replace with actual API call
-      return new Promise<Coupon>((resolve) => {
-        setTimeout(() => {
-          resolve({
-            id,
-            code: 'SAMPLE',
-            discount: 10,
-            type: 'percentage',
-            maxUses: 100,
-            usedCount: 0,
-            validFrom: new Date().toISOString(),
-            validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            isActive: !isActive,
-            createdAt: new Date().toISOString(),
-            createdBy: 'admin@example.com',
-          });
-        }, 500);
-      });
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { data, error } = await supabase
+        .from('coupons')
+        .update({ is_active: !is_active })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
+      toast({
+        title: 'Success',
+        description: 'Coupon status updated successfully',
+      });
+    },
+    onError: (error) => {
+      console.error('Toggle coupon error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update coupon status.',
+        variant: 'destructive',
+      });
     },
   });
 
   // Delete coupon
   const deleteCoupon = useMutation({
     mutationFn: async (id: string) => {
-      // Replace with actual API call
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve();
-        }, 500);
-      });
+      const { error } = await supabase
+        .from('coupons')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
@@ -147,13 +147,21 @@ export default function CouponsPage() {
         description: 'Coupon deleted successfully',
       });
     },
+    onError: (error) => {
+      console.error('Delete coupon error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete coupon.',
+        variant: 'destructive',
+      });
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     // Basic validation
-    if (formData.discount <= 0) {
+    if (formData.discount_value <= 0) {
       toast({
         title: 'Invalid discount',
         description: 'Discount must be greater than 0',
@@ -162,7 +170,7 @@ export default function CouponsPage() {
       return;
     }
 
-    if (new Date(formData.validUntil) < new Date()) {
+    if (new Date(formData.valid_until) < new Date()) {
       toast({
         title: 'Invalid date',
         description: 'Expiration date must be in the future',
@@ -171,23 +179,14 @@ export default function CouponsPage() {
       return;
     }
 
-    createCoupon.mutate(formData, {
-      onError: (error) => {
-        console.error('Failed to create coupon:', error);
-        toast({
-          title: 'Failed to create coupon',
-          description: error.message || 'An error occurred',
-          variant: 'destructive',
-        });
-      },
-    });
+    createCoupon.mutate(formData);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'discount' || name === 'maxUses' ? Number(value) : value,
+      [name]: name === 'discount_value' || name === 'max_uses' ? Number(value) : value,
     }));
   };
 
@@ -227,9 +226,9 @@ export default function CouponsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="type">Type</Label>
                   <Select
-                    value={formData.type}
+                    value={formData.discount_type}
                     onValueChange={(value: 'percentage' | 'fixed') =>
-                      setFormData(prev => ({ ...prev, type: value }))
+                      setFormData(prev => ({ ...prev, discount_type: value }))
                     }
                   >
                     <SelectTrigger>
@@ -242,51 +241,51 @@ export default function CouponsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="discount">
-                    Discount {formData.type === 'percentage' ? '(%)' : '($)'}
+                  <Label htmlFor="discount_value">
+                    Discount {formData.discount_type === 'percentage' ? '(%)' : '($)'}
                   </Label>
                   <Input
-                    id="discount"
-                    name="discount"
+                    id="discount_value"
+                    name="discount_value"
                     type="number"
                     min="0"
-                    max={formData.type === 'percentage' ? '100' : undefined}
-                    value={formData.discount}
+                    max={formData.discount_type === 'percentage' ? '100' : undefined}
+                    value={formData.discount_value}
                     onChange={handleChange}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="maxUses">Max Uses (0 for unlimited)</Label>
+                  <Label htmlFor="max_uses">Max Uses (0 for unlimited)</Label>
                   <Input
-                    id="maxUses"
-                    name="maxUses"
+                    id="max_uses"
+                    name="max_uses"
                     type="number"
                     min="0"
-                    value={formData.maxUses}
+                    value={formData.max_uses}
                     onChange={handleChange}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="validFrom">Valid From</Label>
+                  <Label htmlFor="valid_from">Valid From</Label>
                   <Input
-                    id="validFrom"
-                    name="validFrom"
+                    id="valid_from"
+                    name="valid_from"
                     type="date"
-                    value={formData.validFrom}
+                    value={formData.valid_from}
                     onChange={handleChange}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="validUntil">Valid Until</Label>
+                  <Label htmlFor="valid_until">Valid Until</Label>
                   <Input
-                    id="validUntil"
-                    name="validUntil"
+                    id="valid_until"
+                    name="valid_until"
                     type="date"
-                    min={formData.validFrom}
-                    value={formData.validUntil}
+                    min={formData.valid_from}
+                    value={formData.valid_until}
                     onChange={handleChange}
                     required
                   />
@@ -351,24 +350,24 @@ export default function CouponsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {coupon.discount}
-                        {coupon.type === 'percentage' ? '%' : '$'} off
+                        {coupon.discount_value}
+                        {coupon.discount_type === 'percentage' ? '%' : '$'} off
                       </TableCell>
                       <TableCell>
-                        {coupon.usedCount} / {coupon.maxUses === 0 ? '∞' : coupon.maxUses}
+                        {coupon.used_count} / {coupon.max_uses === 0 ? '∞' : coupon.max_uses}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(coupon.validUntil), 'MMM d, yyyy')}
+                        {format(new Date(coupon.valid_until), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            coupon.isActive
+                            coupon.is_active
                               ? 'bg-green-100 text-green-800'
                               : 'bg-gray-100 text-gray-800'
                           }`}
                         >
-                          {coupon.isActive ? 'Active' : 'Inactive'}
+                          {coupon.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
@@ -379,7 +378,7 @@ export default function CouponsPage() {
                             onClick={() =>
                               toggleCouponStatus.mutate({
                                 id: coupon.id,
-                                isActive: coupon.isActive,
+                                is_active: coupon.is_active,
                               })
                             }
                             disabled={toggleCouponStatus.isPending}

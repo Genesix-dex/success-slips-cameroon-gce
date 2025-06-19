@@ -3,29 +3,35 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
-import { Search, Filter, Check, X, Clock, AlertCircle, Download, Eye } from 'lucide-react';
+import { Search, Eye, Check, X, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface Payment {
   id: string;
-  reference: string;
-  registrationId: string;
+  registration_id: string;
   amount: number;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
-  method: string;
-  transactionId: string;
-  createdAt: string;
-  payerName: string;
-  phoneNumber: string;
-  adminNotes?: string;
-  paymentScreenshotUrl?: string;
+  payment_method: string;
+  payer_name: string;
+  phone_number: string;
+  transaction_id?: string;
+  payment_screenshot_url?: string;
+  admin_notes?: string;
+  created_at: string;
+  verified_at?: string;
+  registrations?: {
+    full_name: string;
+    email: string;
+    cin: string;
+  };
 }
 
 export default function PaymentsPage() {
@@ -37,197 +43,156 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
 
   // Fetch payments from Supabase
-  const { data: payments = [], isLoading } = useQuery<Payment[]>({
-    queryKey: ['payments', statusFilter],
+  const { data: payments = [], isLoading, error } = useQuery<Payment[]>({
+    queryKey: ['admin-payments', statusFilter],
     queryFn: async () => {
-      try {
-        const { data, error } = await supabase
-          .from('payments')
-          .select(`
-            *,
-            registrations!inner(full_name)
-          `)
-          .order('created_at', { ascending: false });
+      let query = supabase
+        .from('payments')
+        .select(`
+          *,
+          registrations!inner(
+            full_name,
+            email,
+            cin
+          )
+        `)
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-
-        return data.map(payment => ({
-          id: payment.id,
-          reference: `PAY-${payment.id.substring(0, 8).toUpperCase()}`,
-          registrationId: payment.registration_id || '',
-          amount: payment.amount || 0,
-          status: payment.status || 'pending',
-          method: payment.payment_method || 'unknown',
-          transactionId: payment.transaction_id || 'N/A',
-          createdAt: payment.created_at || new Date().toISOString(),
-          payerName: payment.payer_name || 'Unknown',
-          phoneNumber: payment.phone_number || 'N/A',
-          adminNotes: payment.admin_notes || '',
-          paymentScreenshotUrl: payment.payment_screenshot_url || '',
-        }));
-      } catch (err) {
-        console.error('Error fetching payments:', err);
-        throw err;
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
       }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
     },
   });
 
-  // Mutation for updating payment status
-  const updatePaymentMutation = useMutation({
-    mutationFn: async ({ paymentId, status, notes }: { paymentId: string; status: string; notes?: string }) => {
-      const { error } = await supabase
+  // Filter payments based on search
+  const filteredPayments = payments.filter(payment => {
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      payment.payer_name.toLowerCase().includes(searchLower) ||
+      payment.phone_number.includes(searchLower) ||
+      payment.registrations?.full_name.toLowerCase().includes(searchLower) ||
+      payment.registrations?.email.toLowerCase().includes(searchLower) ||
+      payment.registrations?.cin.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Update payment status mutation
+  const updatePaymentStatus = useMutation({
+    mutationFn: async ({ id, status, notes }: { id: string; status: string; notes?: string }) => {
+      const updateData: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (status === 'completed') {
+        updateData.verified_at = new Date().toISOString();
+      }
+
+      if (notes) {
+        updateData.admin_notes = notes;
+      }
+
+      const { data, error } = await supabase
         .from('payments')
-        .update({ 
-          status, 
-          admin_notes: notes,
-          verified_at: status === 'completed' ? new Date().toISOString() : null
-        })
-        .eq('id', paymentId);
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       toast({
-        title: 'Payment Updated',
-        description: 'Payment status has been updated successfully.',
+        title: 'Payment updated',
+        description: `Payment has been ${data.status === 'completed' ? 'approved' : 'rejected'} successfully.`,
       });
       setSelectedPayment(null);
       setAdminNotes('');
     },
     onError: (error) => {
-      console.error('Error updating payment:', error);
+      console.error('Payment update failed:', error);
       toast({
-        title: 'Update Failed',
-        description: 'Failed to update payment status.',
+        title: 'Update failed',
+        description: 'Could not update payment status. Please try again.',
         variant: 'destructive',
       });
     },
   });
 
   const handleApprovePayment = (payment: Payment) => {
-    updatePaymentMutation.mutate({
-      paymentId: payment.id,
+    updatePaymentStatus.mutate({
+      id: payment.id,
       status: 'completed',
-      notes: adminNotes || 'Payment approved by admin'
+      notes: adminNotes || undefined,
     });
   };
 
   const handleRejectPayment = (payment: Payment) => {
-    updatePaymentMutation.mutate({
-      paymentId: payment.id,
+    updatePaymentStatus.mutate({
+      id: payment.id,
       status: 'failed',
-      notes: adminNotes || 'Payment rejected by admin'
+      notes: adminNotes || 'Payment rejected by admin',
     });
   };
 
-  const filteredPayments = payments.filter(payment => {
-    const matchesSearch = 
-      payment.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.payerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.transactionId.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      pending: { 
-        label: 'Pending', 
-        icon: <Clock className="h-3 w-3 mr-1" />,
-        variant: 'bg-yellow-100 text-yellow-800' 
-      },
-      completed: { 
-        label: 'Completed', 
-        icon: <Check className="h-3 w-3 mr-1" />,
-        variant: 'bg-green-100 text-green-800' 
-      },
-      failed: { 
-        label: 'Failed', 
-        icon: <X className="h-3 w-3 mr-1" />,
-        variant: 'bg-red-100 text-red-800' 
-      },
-      refunded: { 
-        label: 'Refunded', 
-        icon: <AlertCircle className="h-3 w-3 mr-1" />,
-        variant: 'bg-purple-100 text-purple-800' 
-      },
+      pending: { label: 'Pending', variant: 'bg-yellow-100 text-yellow-800' },
+      completed: { label: 'Approved', variant: 'bg-green-100 text-green-800' },
+      failed: { label: 'Rejected', variant: 'bg-red-100 text-red-800' },
+      refunded: { label: 'Refunded', variant: 'bg-blue-100 text-blue-800' },
     } as const;
 
-    const statusInfo = statusMap[status as keyof typeof statusMap] || { 
-      label: status, 
-      icon: null,
-      variant: 'bg-gray-100 text-gray-800' 
-    };
+    const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: 'bg-gray-100 text-gray-800' };
     
     return (
-      <Badge className={`inline-flex items-center ${statusInfo.variant}`}>
-        {statusInfo.icon}
+      <Badge className={statusInfo.variant}>
         {statusInfo.label}
       </Badge>
     );
   };
 
-  const handleExport = async () => {
-    try {
-      const headers = [
-        'Reference', 'Payer Name', 'Phone', 'Amount', 
-        'Status', 'Method', 'Transaction ID', 'Created At'
-      ];
-      
-      const csvContent = [
-        headers.join(','),
-        ...payments.map(payment => [
-          `"${payment.reference}"`,
-          `"${payment.payerName}"`,
-          `"${payment.phoneNumber}"`,
-          payment.amount,
-          payment.status,
-          payment.method,
-          `"${payment.transactionId}"`,
-          payment.createdAt
-        ].join(','))
-      ].join('\n');
-      
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `payments-${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast({
-        title: 'Export successful',
-        description: 'Payment data has been exported to CSV',
-      });
-    } catch (err) {
-      console.error('Export failed:', err);
-      toast({
-        title: 'Export failed',
-        description: 'Failed to export payment data',
-        variant: 'destructive',
-      });
-    }
+  const exportToCSV = () => {
+    const csvData = filteredPayments.map(payment => ({
+      'Payment ID': payment.id,
+      'Payer Name': payment.payer_name,
+      'Phone': payment.phone_number,
+      'Amount': payment.amount,
+      'Status': payment.status,
+      'Method': payment.payment_method,
+      'Transaction ID': payment.transaction_id || '',
+      'Candidate Name': payment.registrations?.full_name || '',
+      'Candidate Email': payment.registrations?.email || '',
+      'CIN': payment.registrations?.cin || '',
+      'Created': format(new Date(payment.created_at), 'yyyy-MM-dd HH:mm'),
+      'Admin Notes': payment.admin_notes || '',
+    }));
+
+    const csv = [
+      Object.keys(csvData[0]).join(','),
+      ...csvData.map(row => Object.values(row).map(val => `"${val}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payments-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'XAF',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  if (isLoading) {
+  if (error) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="space-y-4">
+        <div className="bg-red-50 border-l-4 border-red-500 p-4">
+          <p className="text-red-700">Error loading payments: {error.message}</p>
         </div>
       </div>
     );
@@ -235,20 +200,16 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Payments Management</h1>
+          <h1 className="text-3xl font-bold">Payment Management</h1>
           <p className="text-muted-foreground">
-            Review and approve payment transactions
+            Review and approve candidate payments
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={handleExport}
-          className="self-start md:self-auto"
-        >
+        <Button onClick={exportToCSV} disabled={filteredPayments.length === 0}>
           <Download className="mr-2 h-4 w-4" />
-          Export
+          Export CSV
         </Button>
       </div>
 
@@ -264,7 +225,6 @@ export default function PaymentsPage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
           <select
             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             value={statusFilter}
@@ -272,8 +232,8 @@ export default function PaymentsPage() {
           >
             <option value="all">All Statuses</option>
             <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
+            <option value="completed">Approved</option>
+            <option value="failed">Rejected</option>
             <option value="refunded">Refunded</option>
           </select>
         </div>
@@ -281,10 +241,14 @@ export default function PaymentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Payment Transactions</CardTitle>
+          <CardTitle>Payment Records</CardTitle>
         </CardHeader>
         <CardContent>
-          {filteredPayments.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <LoadingSpinner size={32} />
+            </div>
+          ) : filteredPayments.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">
                 {searchTerm || statusFilter !== 'all' 
@@ -309,11 +273,10 @@ export default function PaymentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Payer</TableHead>
+                    <TableHead>Payer Details</TableHead>
+                    <TableHead>Candidate</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Method</TableHead>
-                    <TableHead>Transaction ID</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -322,127 +285,144 @@ export default function PaymentsPage() {
                 <TableBody>
                   {filteredPayments.map((payment) => (
                     <TableRow key={payment.id}>
-                      <TableCell className="font-medium">
-                        <div className="font-mono text-sm">
-                          {payment.reference}
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{payment.payer_name}</div>
+                          <div className="text-sm text-muted-foreground">{payment.phone_number}</div>
+                          {payment.transaction_id && (
+                            <div className="text-xs text-muted-foreground">
+                              TxID: {payment.transaction_id}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span>{payment.payerName}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {payment.phoneNumber}
-                          </span>
+                        <div>
+                          <div className="font-medium">{payment.registrations?.full_name}</div>
+                          <div className="text-sm text-muted-foreground">{payment.registrations?.email}</div>
+                          <div className="text-xs text-muted-foreground">CIN: {payment.registrations?.cin}</div>
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">
-                        {formatCurrency(payment.amount)}
+                        ${payment.amount}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {payment.method}
+                          {payment.payment_method}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground font-mono">
-                        {payment.transactionId || 'N/A'}
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(payment.status)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(payment.createdAt), 'MMM d, yyyy HH:mm')}
+                        {format(new Date(payment.created_at), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell className="text-right">
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
                               variant="ghost"
-                              size="sm"
+                              size="icon"
                               onClick={() => {
                                 setSelectedPayment(payment);
-                                setAdminNotes(payment.adminNotes || '');
+                                setAdminNotes(payment.admin_notes || '');
                               }}
                             >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Review
+                              <Eye className="h-4 w-4" />
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="max-w-2xl">
                             <DialogHeader>
-                              <DialogTitle>Payment Review - {payment.reference}</DialogTitle>
+                              <DialogTitle>Payment Review</DialogTitle>
                             </DialogHeader>
-                            <div className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="text-sm font-medium">Payer Name</label>
-                                  <p className="text-sm text-muted-foreground">{payment.payerName}</p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium">Phone Number</label>
-                                  <p className="text-sm text-muted-foreground">{payment.phoneNumber}</p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium">Amount</label>
-                                  <p className="text-sm text-muted-foreground">{formatCurrency(payment.amount)}</p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium">Payment Method</label>
-                                  <p className="text-sm text-muted-foreground capitalize">{payment.method}</p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium">Transaction ID</label>
-                                  <p className="text-sm text-muted-foreground font-mono">{payment.transactionId}</p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium">Current Status</label>
-                                  <div className="mt-1">{getStatusBadge(payment.status)}</div>
-                                </div>
-                              </div>
-
-                              {payment.paymentScreenshotUrl && (
-                                <div>
-                                  <label className="text-sm font-medium">Payment Screenshot</label>
-                                  <div className="mt-2">
-                                    <img 
-                                      src={payment.paymentScreenshotUrl} 
-                                      alt="Payment Screenshot" 
-                                      className="max-w-full h-48 object-contain border rounded"
-                                    />
+                            {selectedPayment && (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-sm font-medium">Payer Name</label>
+                                    <p className="text-sm text-muted-foreground">{selectedPayment.payer_name}</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-sm font-medium">Amount</label>
+                                    <p className="text-sm text-muted-foreground">${selectedPayment.amount}</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-sm font-medium">Phone Number</label>
+                                    <p className="text-sm text-muted-foreground">{selectedPayment.phone_number}</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-sm font-medium">Payment Method</label>
+                                    <p className="text-sm text-muted-foreground capitalize">{selectedPayment.payment_method}</p>
                                   </div>
                                 </div>
-                              )}
 
-                              <div>
-                                <label className="text-sm font-medium">Admin Notes</label>
-                                <Textarea
-                                  value={adminNotes}
-                                  onChange={(e) => setAdminNotes(e.target.value)}
-                                  placeholder="Add notes about this payment..."
-                                  className="mt-1"
-                                />
-                              </div>
+                                {selectedPayment.payment_screenshot_url && (
+                                  <div>
+                                    <label className="text-sm font-medium">Payment Screenshot</label>
+                                    <div className="mt-2">
+                                      <img
+                                        src={selectedPayment.payment_screenshot_url}
+                                        alt="Payment screenshot"
+                                        className="max-w-full h-auto rounded-lg border"
+                                        style={{ maxHeight: '300px' }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
 
-                              {payment.status === 'pending' && (
-                                <div className="flex gap-2 pt-4">
-                                  <Button
-                                    onClick={() => handleApprovePayment(payment)}
-                                    disabled={updatePaymentMutation.isPending}
-                                    className="bg-green-600 hover:bg-green-700"
-                                  >
-                                    <Check className="h-4 w-4 mr-1" />
-                                    Approve Payment
-                                  </Button>
-                                  <Button
-                                    onClick={() => handleRejectPayment(payment)}
-                                    disabled={updatePaymentMutation.isPending}
-                                    variant="destructive"
-                                  >
-                                    <X className="h-4 w-4 mr-1" />
-                                    Reject Payment
-                                  </Button>
+                                <div>
+                                  <label className="text-sm font-medium">Admin Notes</label>
+                                  <Textarea
+                                    value={adminNotes}
+                                    onChange={(e) => setAdminNotes(e.target.value)}
+                                    placeholder="Add notes about this payment..."
+                                    className="mt-1"
+                                  />
                                 </div>
-                              )}
-                            </div>
+
+                                {selectedPayment.status === 'pending' && (
+                                  <div className="flex gap-2 pt-4">
+                                    <Button
+                                      onClick={() => handleApprovePayment(selectedPayment)}
+                                      disabled={updatePaymentStatus.isPending}
+                                      className="bg-green-600 hover:bg-green-700"
+                                    >
+                                      {updatePaymentStatus.isPending ? (
+                                        <LoadingSpinner size={16} className="mr-2" />
+                                      ) : (
+                                        <Check className="mr-2 h-4 w-4" />
+                                      )}
+                                      Approve Payment
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      onClick={() => handleRejectPayment(selectedPayment)}
+                                      disabled={updatePaymentStatus.isPending}
+                                    >
+                                      {updatePaymentStatus.isPending ? (
+                                        <LoadingSpinner size={16} className="mr-2" />
+                                      ) : (
+                                        <X className="mr-2 h-4 w-4" />
+                                      )}
+                                      Reject Payment
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {selectedPayment.status !== 'pending' && (
+                                  <div className="pt-4">
+                                    <p className="text-sm text-muted-foreground">
+                                      This payment has been {selectedPayment.status === 'completed' ? 'approved' : 'rejected'}.
+                                      {selectedPayment.verified_at && (
+                                        <span className="block">
+                                          Action taken on: {format(new Date(selectedPayment.verified_at), 'PPp')}
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </DialogContent>
                         </Dialog>
                       </TableCell>
