@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,6 +13,7 @@ import PaymentSuccess from "./pages/PaymentSuccess";
 import NotFound from "./pages/NotFound";
 import { RouterProvider } from 'react-router-dom';
 import { adminRoutes } from "./routes/admin";
+import TestPage from "./pages/TestPage";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +22,11 @@ const AppRoutes = () => (
     <Route path="/" element={
       <PageTransition>
         <Index />
+      </PageTransition>
+    } />
+    <Route path="/test" element={
+      <PageTransition>
+        <TestPage />
       </PageTransition>
     } />
     <Route path="/exam-level" element={
