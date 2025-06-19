@@ -19,4 +19,9 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  base: './', // Add this line
+  build: {
+    outDir: 'dist', // Ensure this is set
+    sourcemap: true // Helpful for debugging
+  },
 }));
