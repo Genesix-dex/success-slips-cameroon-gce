@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { couponService } from '@/services/couponService';
@@ -25,7 +26,7 @@ const mapApiCoupon = (coupon: ApiCoupon): Coupon => ({
   validUntil: new Date(coupon.validUntil),
   createdAt: new Date(coupon.createdAt),
   updatedAt: new Date(coupon.updatedAt),
-  ...(coupon.coupon || {}) // Handle nested coupon from ValidateCouponResponse
+  ...(coupon.coupon || {})
 });
 
 export default function CouponManager() {
@@ -34,24 +35,21 @@ export default function CouponManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   
-  // New coupon form state
   const [newCoupon, setNewCoupon] = useState<CreateCouponDto>({
     code: '',
     discount: 10,
     type: 'percentage',
     maxUses: 100,
     validFrom: new Date(),
-    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
+    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   });
 
-  // Fetch all coupons
   const fetchCoupons = async () => {
     try {
       setIsLoading(true);
       const token = await user?.getIdToken();
       if (token) {
         const data = await couponService.getCoupons(token);
-        // Handle both array of coupons and ValidateCouponResponse format
         const couponsArray = Array.isArray(data) 
           ? data 
           : data.coupon 
@@ -71,14 +69,12 @@ export default function CouponManager() {
     }
   };
 
-  // Load coupons on mount
   useEffect(() => {
     if (user) {
       fetchCoupons();
     }
   }, [user]);
 
-  // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewCoupon(prev => ({
@@ -87,17 +83,14 @@ export default function CouponManager() {
     }));
   };
 
-  // Handle coupon type change
   const handleTypeChange = (value: CouponType) => {
     setNewCoupon(prev => ({
       ...prev,
       type: value,
-      // Reset discount to a reasonable default when type changes
       discount: value === 'percentage' ? 10 : 5000
     }));
   };
 
-  // Handle date changes
   const handleDateChange = (field: 'validFrom' | 'validUntil', value: string) => {
     setNewCoupon(prev => ({
       ...prev,
@@ -105,7 +98,6 @@ export default function CouponManager() {
     }));
   };
 
-  // Generate a random coupon code
   const generateCode = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let result = '';
@@ -115,7 +107,6 @@ export default function CouponManager() {
     return result;
   };
 
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -128,7 +119,6 @@ export default function CouponManager() {
       return;
     }
 
-    // Ensure dates are properly formatted
     const couponData: CreateCouponDto = {
       ...newCoupon,
       validFrom: newCoupon.validFrom.toISOString(),
@@ -146,7 +136,6 @@ export default function CouponManager() {
         variant: 'default'
       });
       
-      // Reset form and refresh list
       setNewCoupon({
         code: '',
         discount: 10,
@@ -169,7 +158,6 @@ export default function CouponManager() {
     }
   };
 
-  // Toggle coupon active status
   const toggleCouponStatus = async (coupon: ApiCoupon) => {
     if (!user) return;
     
@@ -198,7 +186,6 @@ export default function CouponManager() {
     }
   };
 
-  // Delete a coupon
   const handleDeleteCoupon = async (id: string) => {
     if (!user) return;
     
@@ -242,7 +229,6 @@ export default function CouponManager() {
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Create Coupon Form */}
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Create New Coupon</CardTitle>
@@ -355,7 +341,6 @@ export default function CouponManager() {
           </form>
         </Card>
         
-        {/* Coupons List */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
@@ -389,54 +374,53 @@ export default function CouponManager() {
                       {coupons.map((coupon) => {
                         const mappedCoupon = mapApiCoupon(coupon);
                         return (
-                        <TableRow key={mappedCoupon.id}>
-                          <TableCell className="font-mono font-semibold">{mappedCoupon.code}</TableCell>
-                          <TableCell>{mappedCoupon.type === 'percentage' ? '%' : 'XAF'}</TableCell>
-                          <TableCell>
-                            {mappedCoupon.type === 'percentage' 
-                              ? `${mappedCoupon.discount}%` 
-                              : `${mappedCoupon.discount.toLocaleString()} XAF`}
-                          </TableCell>
-                          <TableCell>
-                            {mappedCoupon.maxUses === 0 
-                              ? '∞' 
-                              : `${mappedCoupon.usedCount} / ${mappedCoupon.maxUses}`}
-                          </TableCell>
-                          <TableCell>
-                            {format(mappedCoupon.validUntil, 'MMM d, yyyy')}
-                          </TableCell>
-                          <TableCell>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              mappedCoupon.isActive 
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                                : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
-                            }`}>
-                              {mappedCoupon.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => toggleCouponStatus(coupon)}
-                              >
-                                {mappedCoupon.isActive ? 'Deactivate' : 'Activate'}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600 hover:text-red-800"
-                                onClick={() => handleDeleteCoupon(mappedCoupon.id)}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                          <TableRow key={mappedCoupon.id}>
+                            <TableCell className="font-mono font-semibold">{mappedCoupon.code}</TableCell>
+                            <TableCell>{mappedCoupon.type === 'percentage' ? '%' : 'XAF'}</TableCell>
+                            <TableCell>
+                              {mappedCoupon.type === 'percentage' 
+                                ? `${mappedCoupon.discount}%` 
+                                : `${mappedCoupon.discount.toLocaleString()} XAF`}
+                            </TableCell>
+                            <TableCell>
+                              {mappedCoupon.maxUses === 0 
+                                ? '∞' 
+                                : `${mappedCoupon.usedCount} / ${mappedCoupon.maxUses}`}
+                            </TableCell>
+                            <TableCell>
+                              {format(mappedCoupon.validUntil, 'MMM d, yyyy')}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                mappedCoupon.isActive 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                              }`}>
+                                {mappedCoupon.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleCouponStatus(coupon)}
+                                >
+                                  {mappedCoupon.isActive ? 'Deactivate' : 'Activate'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-800"
+                                  onClick={() => handleDeleteCoupon(mappedCoupon.id)}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                      ))}
                     </TableBody>
                   </Table>
                 </div>
