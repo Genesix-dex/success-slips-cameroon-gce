@@ -10,20 +10,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Plus, Trash2, Edit } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { couponApi } from '@/lib/api';
 
 interface Coupon {
   id: string;
   code: string;
   discount_value: number;
   discount_type: 'percentage' | 'fixed';
-  max_uses?: number;
+  max_uses?: number | null;
   used_count: number;
   valid_from: string;
   valid_until: string;
   is_active: boolean;
   created_at: string;
-  created_by?: string;
+  created_by?: string | null;
 }
 
 export default function CouponsPage() {
@@ -39,40 +39,20 @@ export default function CouponsPage() {
     valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
 
-  // Fetch coupons from Supabase
+  // Fetch coupons
   const { data: coupons = [], isLoading } = useQuery<Coupon[]>({
     queryKey: ['coupons'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('coupons')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: couponApi.getCoupons,
   });
 
   // Create coupon mutation
   const createCoupon = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const { data: newCoupon, error } = await supabase
-        .from('coupons')
-        .insert([{
-          code: data.code,
-          discount_value: data.discount_value,
-          discount_type: data.discount_type,
-          max_uses: data.max_uses,
-          valid_from: data.valid_from,
-          valid_until: data.valid_until,
-          is_active: true,
-          used_count: 0,
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return newCoupon;
+      return couponApi.createCoupon({
+        ...data,
+        is_active: true,
+        max_uses: data.max_uses || null
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
@@ -103,15 +83,7 @@ export default function CouponsPage() {
   // Toggle coupon status
   const toggleCouponStatus = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { data, error } = await supabase
-        .from('coupons')
-        .update({ is_active: !is_active })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return couponApi.updateCoupon(id, { is_active: !is_active });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
@@ -132,14 +104,7 @@ export default function CouponsPage() {
 
   // Delete coupon
   const deleteCoupon = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('coupons')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-    },
+    mutationFn: couponApi.deleteCoupon,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
       toast({
@@ -354,7 +319,7 @@ export default function CouponsPage() {
                         {coupon.discount_type === 'percentage' ? '%' : '$'} off
                       </TableCell>
                       <TableCell>
-                        {coupon.used_count} / {coupon.max_uses === 0 ? '∞' : coupon.max_uses}
+                        {coupon.used_count} / {coupon.max_uses === 0 || coupon.max_uses === null ? '∞' : coupon.max_uses}
                       </TableCell>
                       <TableCell>
                         {format(new Date(coupon.valid_until), 'MMM d, yyyy')}
