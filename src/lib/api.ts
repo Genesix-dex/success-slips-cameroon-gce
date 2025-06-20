@@ -7,21 +7,21 @@ type Coupon = {
   code: string;
   discount_value: number;
   discount_type: 'percentage' | 'fixed';
-  max_uses: number | null;
+  max_uses: number;
   used_count: number;
   valid_from: string;
   valid_until: string;
   is_active: boolean;
   created_at: string;
-  created_by: string | null;
+  created_by: string;
 };
 
 type User = {
   id: string;
+  email: string;
   full_name: string;
   role: 'admin' | 'user' | 'support';
   created_at: string;
-  user_id: string | null;
 };
 
 type Submission = {
@@ -33,6 +33,11 @@ type Submission = {
   document_verification_status: 'pending' | 'verified' | 'rejected';
   payment_status: 'pending' | 'completed' | 'failed';
   created_at: string;
+  documents: Array<{
+    id: string;
+    document_type: string;
+    file_url: string;
+  }>;
 };
 
 type Payment = {
@@ -41,7 +46,7 @@ type Payment = {
   amount: number;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
   payment_method: string;
-  transaction_id: string | null;
+  transaction_id: string;
   payer_name: string;
   phone_number: string;
   created_at: string;
@@ -67,33 +72,18 @@ export const couponApi = {
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return data.map(coupon => ({
-      ...coupon,
-      discount_type: coupon.discount_type as 'percentage' | 'fixed',
-      is_active: coupon.is_active ?? true,
-      max_uses: coupon.max_uses ?? null,
-      used_count: coupon.used_count ?? 0
-    }));
+    return data as Coupon[];
   },
 
-  async createCoupon(coupon: Omit<Coupon, 'id' | 'created_at' | 'created_by' | 'used_count'>): Promise<Coupon> {
+  async createCoupon(coupon: Omit<Coupon, 'id' | 'created_at' | 'created_by'>): Promise<Coupon> {
     const { data, error } = await supabase
       .from('coupons')
-      .insert([{
-        ...coupon,
-        used_count: 0
-      }])
+      .insert([coupon])
       .select()
       .single();
     
     if (error) throw error;
-    return {
-      ...data,
-      discount_type: data.discount_type as 'percentage' | 'fixed',
-      is_active: data.is_active ?? true,
-      max_uses: data.max_uses ?? null,
-      used_count: data.used_count ?? 0
-    };
+    return data as Coupon;
   },
 
   async updateCoupon(id: string, updates: Partial<Coupon>): Promise<Coupon> {
@@ -105,13 +95,7 @@ export const couponApi = {
       .single();
     
     if (error) throw error;
-    return {
-      ...data,
-      discount_type: data.discount_type as 'percentage' | 'fixed',
-      is_active: data.is_active ?? true,
-      max_uses: data.max_uses ?? null,
-      used_count: data.used_count ?? 0
-    };
+    return data as Coupon;
   },
 
   async deleteCoupon(id: string): Promise<void> {
@@ -163,7 +147,10 @@ export const submissionApi = {
   async getSubmissions(): Promise<Submission[]> {
     const { data, error } = await supabase
       .from('registrations')
-      .select('*')
+      .select(`
+        *,
+        documents (*)
+      `)
       .order('created_at', { ascending: false });
     
     if (error) throw error;

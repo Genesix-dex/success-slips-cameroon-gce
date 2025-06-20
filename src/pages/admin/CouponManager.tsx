@@ -1,56 +1,62 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { couponApi } from '@/lib/api';
+import { couponService } from '@/services/couponService';
+import { Coupon, CreateCouponDto, CouponType, ValidateCouponResponse } from '@/types/coupon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 
-type CouponType = 'percentage' | 'fixed';
+type ApiCoupon = Omit<Coupon, 'validFrom' | 'validUntil' | 'createdAt' | 'updatedAt'> & {
+  validFrom: string;
+  validUntil: string;
+  createdAt: string;
+  updatedAt: string;
+  coupon?: Coupon;
+};
 
-interface CreateCouponDto {
-  code: string;
-  discount_value: number;
-  discount_type: CouponType;
-  max_uses: number | null;
-  valid_from: string;
-  valid_until: string;
-  is_active: boolean;
-}
-
-interface Coupon extends CreateCouponDto {
-  id: string;
-  used_count: number;
-  created_at: string;
-  created_by: string | null;
-}
+const mapApiCoupon = (coupon: ApiCoupon): Coupon => ({
+  ...coupon,
+  validFrom: new Date(coupon.validFrom),
+  validUntil: new Date(coupon.validUntil),
+  createdAt: new Date(coupon.createdAt),
+  updatedAt: new Date(coupon.updatedAt),
+  ...(coupon.coupon || {})
+});
 
 export default function CouponManager() {
   const { user, isLoading: authLoading } = useAuth();
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [coupons, setCoupons] = useState<ApiCoupon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   
   const [newCoupon, setNewCoupon] = useState<CreateCouponDto>({
     code: '',
-    discount_value: 10,
-    discount_type: 'percentage',
-    max_uses: 100,
-    valid_from: new Date().toISOString().split('T')[0],
-    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    is_active: true
+    discount: 10,
+    type: 'percentage',
+    maxUses: 100,
+    validFrom: new Date(),
+    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   });
 
   const fetchCoupons = async () => {
     try {
       setIsLoading(true);
-      const data = await couponApi.getCoupons();
-      setCoupons(data);
+      const token = await user?.getIdToken();
+      if (token) {
+        const data = await couponService.getCoupons(token);
+        const couponsArray = Array.isArray(data) 
+          ? data 
+          : data.coupon 
+            ? [data.coupon] 
+            : [];
+        setCoupons(couponsArray);
+      }
     } catch (error) {
       console.error('Failed to fetch coupons:', error);
       toast({
@@ -64,29 +70,31 @@ export default function CouponManager() {
   };
 
   useEffect(() => {
-    fetchCoupons();
-  }, []);
+    if (user) {
+      fetchCoupons();
+    }
+  }, [user]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewCoupon(prev => ({
       ...prev,
-      [name]: name === 'discount_value' || name === 'max_uses' ? Number(value) : value
+      [name]: name === 'discount' || name === 'maxUses' ? Number(value) : value
     }));
   };
 
   const handleTypeChange = (value: CouponType) => {
     setNewCoupon(prev => ({
       ...prev,
-      discount_type: value,
-      discount_value: value === 'percentage' ? 10 : 5000
+      type: value,
+      discount: value === 'percentage' ? 10 : 5000
     }));
   };
 
-  const handleDateChange = (field: 'valid_from' | 'valid_until', value: string) => {
+  const handleDateChange = (field: 'validFrom' | 'validUntil', value: string) => {
     setNewCoupon(prev => ({
       ...prev,
-      [field]: value
+      [field]: new Date(value)
     }));
   };
 
@@ -111,9 +119,16 @@ export default function CouponManager() {
       return;
     }
 
+    const couponData: CreateCouponDto = {
+      ...newCoupon,
+      validFrom: newCoupon.validFrom.toISOString(),
+      validUntil: newCoupon.validUntil.toISOString(),
+    };
+
     try {
       setIsCreating(true);
-      await couponApi.createCoupon(newCoupon);
+      const token = await user.getIdToken();
+      await couponService.createCoupon(couponData, token);
       
       toast({
         title: 'Success',
@@ -123,12 +138,11 @@ export default function CouponManager() {
       
       setNewCoupon({
         code: '',
-        discount_value: 10,
-        discount_type: 'percentage',
-        max_uses: 100,
-        valid_from: new Date().toISOString().split('T')[0],
-        valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        is_active: true
+        discount: 10,
+        type: 'percentage',
+        maxUses: 100,
+        validFrom: new Date(),
+        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       });
       
       await fetchCoupons();
@@ -144,15 +158,20 @@ export default function CouponManager() {
     }
   };
 
-  const toggleCouponStatus = async (coupon: Coupon) => {
+  const toggleCouponStatus = async (coupon: ApiCoupon) => {
     if (!user) return;
     
     try {
-      await couponApi.updateCoupon(coupon.id, { is_active: !coupon.is_active });
+      const token = await user.getIdToken();
+      await couponService.updateCoupon(
+        coupon.id,
+        { isActive: !coupon.isActive },
+        token
+      );
       
       toast({
         title: 'Success',
-        description: `Coupon ${coupon.is_active ? 'deactivated' : 'activated'} successfully`,
+        description: `Coupon ${coupon.isActive ? 'deactivated' : 'activated'} successfully`,
         variant: 'default'
       });
       
@@ -175,7 +194,8 @@ export default function CouponManager() {
     }
     
     try {
-      await couponApi.deleteCoupon(id);
+      const token = await user.getIdToken();
+      await couponService.deleteCoupon(id, token);
       
       toast({
         title: 'Success',
@@ -244,7 +264,7 @@ export default function CouponManager() {
                   <div>
                     <Label htmlFor="type">Type</Label>
                     <Select 
-                      value={newCoupon.discount_type} 
+                      value={newCoupon.type} 
                       onValueChange={handleTypeChange}
                     >
                       <SelectTrigger>
@@ -258,16 +278,16 @@ export default function CouponManager() {
                   </div>
                   
                   <div>
-                    <Label htmlFor="discount_value">
-                      {newCoupon.discount_type === 'percentage' ? 'Discount (%)' : 'Discount (XAF)'}
+                    <Label htmlFor="discount">
+                      {newCoupon.type === 'percentage' ? 'Discount (%)' : 'Discount (XAF)'}
                     </Label>
                     <Input
-                      id="discount_value"
-                      name="discount_value"
+                      id="discount"
+                      name="discount"
                       type="number"
                       min={1}
-                      max={newCoupon.discount_type === 'percentage' ? 100 : 100000}
-                      value={newCoupon.discount_value}
+                      max={newCoupon.type === 'percentage' ? 100 : 100000}
+                      value={newCoupon.discount}
                       onChange={handleInputChange}
                       required
                     />
@@ -275,13 +295,13 @@ export default function CouponManager() {
                 </div>
                 
                 <div>
-                  <Label htmlFor="max_uses">Max Uses (0 for unlimited)</Label>
+                  <Label htmlFor="maxUses">Max Uses (0 for unlimited)</Label>
                   <Input
-                    id="max_uses"
-                    name="max_uses"
+                    id="maxUses"
+                    name="maxUses"
                     type="number"
                     min={0}
-                    value={newCoupon.max_uses || 0}
+                    value={newCoupon.maxUses}
                     onChange={handleInputChange}
                     required
                   />
@@ -289,24 +309,24 @@ export default function CouponManager() {
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="valid_from">Valid From</Label>
+                    <Label htmlFor="validFrom">Valid From</Label>
                     <Input
-                      id="valid_from"
-                      type="date"
-                      value={newCoupon.valid_from}
-                      onChange={(e) => handleDateChange('valid_from', e.target.value)}
+                      id="validFrom"
+                      type="datetime-local"
+                      value={newCoupon.validFrom ? format(new Date(newCoupon.validFrom), "yyyy-MM-dd'T'HH:mm") : ''}
+                      onChange={(e) => handleDateChange('validFrom', e.target.value)}
                       required
                     />
                   </div>
                   
                   <div>
-                    <Label htmlFor="valid_until">Valid Until</Label>
+                    <Label htmlFor="validUntil">Valid Until</Label>
                     <Input
-                      id="valid_until"
-                      type="date"
-                      value={newCoupon.valid_until}
-                      onChange={(e) => handleDateChange('valid_until', e.target.value)}
-                      min={newCoupon.valid_from}
+                      id="validUntil"
+                      type="datetime-local"
+                      value={newCoupon.validUntil ? format(new Date(newCoupon.validUntil), "yyyy-MM-dd'T'HH:mm") : ''}
+                      onChange={(e) => handleDateChange('validUntil', e.target.value)}
+                      min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
                       required
                     />
                   </div>
@@ -351,53 +371,56 @@ export default function CouponManager() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {coupons.map((coupon) => (
-                        <TableRow key={coupon.id}>
-                          <TableCell className="font-mono font-semibold">{coupon.code}</TableCell>
-                          <TableCell>{coupon.discount_type === 'percentage' ? '%' : 'XAF'}</TableCell>
-                          <TableCell>
-                            {coupon.discount_type === 'percentage' 
-                              ? `${coupon.discount_value}%` 
-                              : `${coupon.discount_value.toLocaleString()} XAF`}
-                          </TableCell>
-                          <TableCell>
-                            {coupon.max_uses === 0 || coupon.max_uses === null
-                              ? '∞' 
-                              : `${coupon.used_count} / ${coupon.max_uses}`}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(coupon.valid_until), 'MMM d, yyyy')}
-                          </TableCell>
-                          <TableCell>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              coupon.is_active 
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                                : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
-                            }`}>
-                              {coupon.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => toggleCouponStatus(coupon)}
-                              >
-                                {coupon.is_active ? 'Deactivate' : 'Activate'}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600 hover:text-red-800"
-                                onClick={() => handleDeleteCoupon(coupon.id)}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {coupons.map((coupon) => {
+                        const mappedCoupon = mapApiCoupon(coupon);
+                        return (
+                          <TableRow key={mappedCoupon.id}>
+                            <TableCell className="font-mono font-semibold">{mappedCoupon.code}</TableCell>
+                            <TableCell>{mappedCoupon.type === 'percentage' ? '%' : 'XAF'}</TableCell>
+                            <TableCell>
+                              {mappedCoupon.type === 'percentage' 
+                                ? `${mappedCoupon.discount}%` 
+                                : `${mappedCoupon.discount.toLocaleString()} XAF`}
+                            </TableCell>
+                            <TableCell>
+                              {mappedCoupon.maxUses === 0 
+                                ? '∞' 
+                                : `${mappedCoupon.usedCount} / ${mappedCoupon.maxUses}`}
+                            </TableCell>
+                            <TableCell>
+                              {format(mappedCoupon.validUntil, 'MMM d, yyyy')}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                mappedCoupon.isActive 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                              }`}>
+                                {mappedCoupon.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleCouponStatus(coupon)}
+                                >
+                                  {mappedCoupon.isActive ? 'Deactivate' : 'Activate'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-800"
+                                  onClick={() => handleDeleteCoupon(mappedCoupon.id)}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
