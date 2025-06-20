@@ -13,28 +13,28 @@ const Index = () => {
       icon: Calculator,
       color: 'bg-gradient-to-br from-green-500 to-green-600',
       subjects: ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Further Math'],
-      path: '/science'
+      path: '/exam-level'
     },
     {
       name: 'Arts',
       icon: BookOpen,
       color: 'bg-gradient-to-br from-red-500 to-red-600',
       subjects: ['Literature', 'History', 'Geography', 'Religious Studies'],
-      path: '/arts'
+      path: '/exam-level'
     },
     {
       name: 'Commercial',
       icon: Briefcase,
       color: 'bg-gradient-to-br from-yellow-500 to-yellow-600',
       subjects: ['Accounting', 'Economics', 'Business Management', 'Commerce'],
-      path: '/commercial'
+      path: '/exam-level'
     },
     {
       name: 'Technical',
       icon: Settings,
       color: 'bg-gradient-to-br from-blue-500 to-blue-600',
       subjects: ['ICT', 'Engineering', 'Woodwork', 'Technical Drawing'],
-      path: '/technical'
+      path: '/exam-level'
     }
   ];
 
@@ -166,7 +166,16 @@ const Index = () => {
           </div>
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {teamMembers.map((member, index) => (
+            {[
+              { name: 'Dr. Sarah Mbaku', role: 'Academic Director', department: 'Science' },
+              { name: 'Prof. Jean Nkomo', role: 'Mathematics Expert', department: 'Science' },
+              { name: 'Dr. Grace Fon', role: 'Literature Specialist', department: 'Arts' },
+              { name: 'Mr. Paul Tabi', role: 'Economics Consultant', department: 'Commercial' },
+              { name: 'Eng. Mark Ashu', role: 'Technical Lead', department: 'Technical' },
+              { name: 'Mr. Akon Benedict', role: 'Chemistry Expert', department: 'Science' },
+              { name: 'Prof. David Kom', role: 'History Scholar', department: 'Arts' },
+              { name: 'Mrs. Helen Njie', role: 'Accounting Professional', department: 'Commercial' }
+            ].map((member, index) => (
               <Card key={index} className="backdrop-blur-md bg-card/80 border-border/20 hover:shadow-lg transition-all duration-300">
                 <CardContent className="p-6 text-center">
                   <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-red-500 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold">
