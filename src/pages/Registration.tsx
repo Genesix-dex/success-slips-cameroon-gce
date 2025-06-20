@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,8 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useRegistration, RegistrationData } from '@/hooks/useRegistration';
 import { couponService } from '@/services/couponService';
+import { personalInfoSchema, paymentDataSchema, PersonalInfoFormData, PaymentFormData } from '@/lib/validationSchemas';
+import { ZodError } from 'zod';
 
 // Helper function to convert File to data URL
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -22,7 +25,6 @@ const fileToDataUrl = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
   });
 };
-
 
 // Type definitions
 interface DocumentInfo {
@@ -39,6 +41,7 @@ interface PaymentData {
   paymentMethod: string;
   transactionId: string;
   paymentScreenshot: File | null;
+  couponCode: string;
 }
 
 // Constants for className patterns
@@ -56,7 +59,7 @@ const Registration = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [registrationId, setRegistrationId] = useState<string | null>(null);
-
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const [registrationData, setRegistrationData] = useState<RegistrationData>({
     examLevel: '',
@@ -225,14 +228,62 @@ const Registration = () => {
     }
   };
 
+  const validatePersonalInfo = () => {
+    try {
+      personalInfoSchema.parse(registrationData.personalInfo);
+      setValidationErrors({});
+      return true;
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const errors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          if (err.path.length > 0) {
+            errors[err.path[0] as string] = err.message;
+          }
+        });
+        setValidationErrors(errors);
+        
+        // Show first error in toast
+        const firstError = error.errors[0];
+        toast({
+          title: "Validation Error",
+          description: firstError.message,
+          variant: "destructive"
+        });
+      }
+      return false;
+    }
+  };
+
+  const validatePaymentData = () => {
+    try {
+      paymentDataSchema.parse(paymentData);
+      setValidationErrors({});
+      return true;
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const errors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          if (err.path.length > 0) {
+            errors[err.path[0] as string] = err.message;
+          }
+        });
+        setValidationErrors(errors);
+        
+        // Show first error in toast
+        const firstError = error.errors[0];
+        toast({
+          title: "Validation Error",
+          description: firstError.message,
+          variant: "destructive"
+        });
+      }
+      return false;
+    }
+  };
+
   const handlePersonalInfoSubmit = () => {
-    const { personalInfo } = registrationData;
-    if (!personalInfo.fullName || !personalInfo.cin || !personalInfo.dateOfBirth || !personalInfo.gender || !personalInfo.location) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields.",
-        variant: "destructive"
-      });
+    if (!validatePersonalInfo()) {
       return;
     }
     setCurrentStep(2);
@@ -285,17 +336,6 @@ const Registration = () => {
     validateCoupon(paymentData.couponCode.trim());
   };
 
-  const validateEmail = (email: string) => {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
-  };
-
-  const validatePhoneNumber = (phone: string) => {
-    // Basic validation for Cameroonian phone numbers (starts with 6, 7, or 2 and is 9 digits)
-    const re = /^[67]\d{8}$/;
-    return re.test(phone);
-  };
-
   const handlePaymentSubmit = async () => {
     if (!registrationId) {
       toast({
@@ -306,39 +346,7 @@ const Registration = () => {
       return;
     }
 
-    // Validate contact information based on preference
-    let contactError = '';
-    if (paymentData.contactPreference === 'email' && !paymentData.email) {
-      contactError = 'Email is required';
-    } else if (paymentData.contactPreference === 'phone' && !paymentData.phoneNumber) {
-      contactError = 'Phone number is required';
-    } else if (paymentData.contactPreference === 'both' && (!paymentData.email || !paymentData.phoneNumber)) {
-      contactError = 'Both email and phone number are required';
-    }
-
-    if (paymentData.email && !validateEmail(paymentData.email)) {
-      contactError = 'Please enter a valid email address';
-    }
-
-    if (paymentData.phoneNumber && !validatePhoneNumber(paymentData.phoneNumber)) {
-      contactError = 'Please enter a valid Cameroonian phone number (e.g., 677123456)';
-    }
-
-    if (contactError) {
-      toast({
-        title: "Contact Information Required",
-        description: contactError,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!paymentData.payerName || !paymentData.paymentMethod) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields.",
-        variant: "destructive"
-      });
+    if (!validatePaymentData()) {
       return;
     }
 
@@ -467,6 +475,8 @@ const Registration = () => {
   const subjects = departmentSubjects[department as keyof typeof departmentSubjects] || [];
   const examLevelDisplay = registrationData.examLevel === 'CGCE_ORDINARY_LEVEL' ? 'CGCE Ordinary Level' : 'CGCE Advanced Level';
 
+  const getFieldError = (fieldName: string) => validationErrors[fieldName];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       {/* Header */}
@@ -514,7 +524,11 @@ const Registration = () => {
                       personalInfo: { ...prev.personalInfo, fullName: e.target.value }
                     }))}
                     placeholder="Enter your full name"
+                    className={getFieldError('fullName') ? 'border-red-500' : ''}
                   />
+                  {getFieldError('fullName') && (
+                    <p className="text-sm text-red-500 mt-1">{getFieldError('fullName')}</p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="cin">Candidate Identification Number (CIN) *</Label>
@@ -525,8 +539,14 @@ const Registration = () => {
                       ...prev,
                       personalInfo: { ...prev.personalInfo, cin: e.target.value }
                     }))}
-                    placeholder="Enter your CIN"
+                    placeholder="Enter your 9-digit CIN"
+                    maxLength={9}
+                    className={getFieldError('cin') ? 'border-red-500' : ''}
                   />
+                  {getFieldError('cin') && (
+                    <p className="text-sm text-red-500 mt-1">{getFieldError('cin')}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Must be exactly 9 digits</p>
                 </div>
               </div>
 
@@ -541,7 +561,12 @@ const Registration = () => {
                       personalInfo: { ...prev.personalInfo, centerNumber: e.target.value }
                     }))}
                     placeholder="Enter center number"
+                    className={getFieldError('centerNumber') ? 'border-red-500' : ''}
                   />
+                  {getFieldError('centerNumber') && (
+                    <p className="text-sm text-red-500 mt-1">{getFieldError('centerNumber')}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Must be at least 5 characters</p>
                 </div>
                 <div>
                   <Label htmlFor="centerName">Center Name</Label>
@@ -568,7 +593,11 @@ const Registration = () => {
                       ...prev,
                       personalInfo: { ...prev.personalInfo, dateOfBirth: e.target.value }
                     }))}
+                    className={getFieldError('dateOfBirth') ? 'border-red-500' : ''}
                   />
+                  {getFieldError('dateOfBirth') && (
+                    <p className="text-sm text-red-500 mt-1">{getFieldError('dateOfBirth')}</p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="gender">Gender *</Label>
@@ -578,7 +607,7 @@ const Registration = () => {
                       personalInfo: { ...prev.personalInfo, gender: value }
                     }))
                   }>
-                    <SelectTrigger>
+                    <SelectTrigger className={getFieldError('gender') ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select gender" />
                     </SelectTrigger>
                     <SelectContent>
@@ -586,6 +615,9 @@ const Registration = () => {
                       <SelectItem value="Female">Female</SelectItem>
                     </SelectContent>
                   </Select>
+                  {getFieldError('gender') && (
+                    <p className="text-sm text-red-500 mt-1">{getFieldError('gender')}</p>
+                  )}
                 </div>
               </div>
 
@@ -597,7 +629,7 @@ const Registration = () => {
                     personalInfo: { ...prev.personalInfo, location: value }
                   }))
                 }>
-                  <SelectTrigger>
+                  <SelectTrigger className={getFieldError('location') ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select your location" />
                   </SelectTrigger>
                   <SelectContent>
@@ -606,6 +638,9 @@ const Registration = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {getFieldError('location') && (
+                  <p className="text-sm text-red-500 mt-1">{getFieldError('location')}</p>
+                )}
               </div>
 
               <Button onClick={handlePersonalInfoSubmit} className="w-full" disabled={isLoading}>
@@ -949,16 +984,6 @@ const Registration = () => {
                             title: 'How to Get Coupons',
                             description: 'Contact our support team to get exclusive coupon codes for discounts on your registration.',
                             variant: 'default',
-                            action: (
-                              <a 
-                                href="https://wa.me/237676078168" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                              >
-                                Contact Support
-                              </a>
-                            )
                           });
                         }}
                       >
@@ -974,7 +999,11 @@ const Registration = () => {
                         placeholder="Your full name" 
                         value={paymentData.payerName}
                         onChange={(e) => setPaymentData(prev => ({ ...prev, payerName: e.target.value }))}
+                        className={getFieldError('payerName') ? 'border-red-500' : ''}
                       />
+                      {getFieldError('payerName') && (
+                        <p className="text-sm text-red-500 mt-1">{getFieldError('payerName')}</p>
+                      )}
                     </div>
 
                     <div>
@@ -1004,7 +1033,11 @@ const Registration = () => {
                           placeholder="your.email@example.com"
                           value={paymentData.email}
                           onChange={(e) => setPaymentData(prev => ({ ...prev, email: e.target.value }))}
+                          className={getFieldError('email') ? 'border-red-500' : ''}
                         />
+                        {getFieldError('email') && (
+                          <p className="text-sm text-red-500 mt-1">{getFieldError('email')}</p>
+                        )}
                       </div>
                     )}
 
@@ -1017,14 +1050,18 @@ const Registration = () => {
                           </div>
                           <Input 
                             type="tel"
-                            className="rounded-l-none"
+                            className={`rounded-l-none ${getFieldError('phoneNumber') ? 'border-red-500' : ''}`}
                             placeholder="677123456"
                             value={paymentData.phoneNumber}
                             onChange={(e) => setPaymentData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                            maxLength={9}
                           />
                         </div>
+                        {getFieldError('phoneNumber') && (
+                          <p className="text-sm text-red-500 mt-1">{getFieldError('phoneNumber')}</p>
+                        )}
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Enter your 9-digit Cameroonian number (e.g., 677123456)
+                          Enter exactly 9 digits starting with 6 or 7 (e.g., 677123456)
                         </p>
                       </div>
                     )}
@@ -1036,7 +1073,7 @@ const Registration = () => {
                   <Select value={paymentData.paymentMethod} onValueChange={(value) => 
                     setPaymentData(prev => ({ ...prev, paymentMethod: value }))
                   }>
-                    <SelectTrigger>
+                    <SelectTrigger className={getFieldError('paymentMethod') ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select payment method" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1044,6 +1081,9 @@ const Registration = () => {
                       <SelectItem value="ORANGE_MONEY">Orange Money</SelectItem>
                     </SelectContent>
                   </Select>
+                  {getFieldError('paymentMethod') && (
+                    <p className="text-sm text-red-500 mt-1">{getFieldError('paymentMethod')}</p>
+                  )}
                 </div>
 
                 <div>
