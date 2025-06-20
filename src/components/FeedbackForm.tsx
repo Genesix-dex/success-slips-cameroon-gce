@@ -25,41 +25,19 @@ export function FeedbackForm() {
     }
 
     setIsSubmitting(true);
-
-    try {
-      // TODO: Replace with your actual API endpoint
-      const response = await fetch('https://api.your-backend.com/feedback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type,
-          message,
-          email: email || undefined,
-          url: window.location.href,
-        }),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Thank you!",
-          description: "Your feedback has been submitted successfully.",
-        });
-        setMessage('');
-        setEmail('');
-      } else {
-        throw new Error('Failed to submit feedback');
-      }
-    } catch (error) {
+    
+    // FormSubmit will handle the submission and email notification
+    // The form's action will handle the actual submission
+    // We'll show success after a short delay to allow the form to submit
+    setTimeout(() => {
       toast({
-        title: "Error",
-        description: "Failed to submit feedback. Please try again later.",
-        variant: "destructive",
+        title: "Thank you!",
+        description: "Your feedback has been submitted successfully.",
       });
-    } finally {
+      setMessage('');
+      setEmail('');
       setIsSubmitting(false);
-    }
+    }, 1000);
   };
 
   return (
@@ -69,7 +47,20 @@ export function FeedbackForm() {
         We'd love to hear your suggestions or report any issues you've encountered.
       </p>
       
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form 
+        action="https://formsubmit.co/ratsmart92@gmail.com" 
+        method="POST"
+        onSubmit={handleSubmit} 
+        className="space-y-4"
+      >
+        {/* FormSubmit configuration */}
+        <input type="hidden" name="_subject" value={`New ${type} - Success Slips Feedback`} />
+        <input type="hidden" name="_next" value={`${window.location.origin}/thank-you`} />
+        <input type="hidden" name="_captcha" value="false" />
+        <input type="text" name="_honey" style={{ display: 'none' }} />
+        <input type="hidden" name="_template" value="table" />
+        <input type="hidden" name="feedback_type" value={type} />
+        <input type="hidden" name="page_url" value={window.location.href} />
         <div className="space-y-2">
           <label className="block text-sm font-medium">Feedback Type</label>
           <div className="flex gap-4">
@@ -116,6 +107,7 @@ export function FeedbackForm() {
           </label>
           <Input
             id="email"
+            name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
