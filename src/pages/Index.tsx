@@ -2,8 +2,9 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { GraduationCap, Users, Award, Phone, MessageCircle, BookOpen, Calculator, Briefcase, Settings } from 'lucide-react';
+import { GraduationCap, Users, Award, Phone, MessageCircle, BookOpen, Calculator, Briefcase, Settings, MessageSquare } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { FeedbackForm } from '@/components/FeedbackForm';
 
 const Index = () => {
 
@@ -296,6 +297,70 @@ const Index = () => {
         </div>
       </section>
 
+      {/* WhatsApp Community Section */}
+      <section className="py-16 px-4 bg-gradient-to-br from-green-600/10 to-green-700/10">
+        <div className="container mx-auto max-w-4xl text-center">
+          <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-md rounded-full px-6 py-2 mb-6 border border-green-500/20">
+            <MessageCircle className="w-5 h-5 text-green-600" />
+            <span className="text-sm font-medium text-foreground">Join Our Community</span>
+          </div>
+          
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-6">
+            The Battle Isn't Over Yet! ⚔️
+          </h2>
+          
+          <p className="text-lg text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed">
+            <span className="font-medium text-foreground">Until the results are out</span> and you <span className="font-bold text-green-600">made it,</span> ✍️ the <span className="font-bold">battle</span> is not over yet. 
+            Join Our Army. <span className="italic">"We shall make it either by hook or crook"</span> — don't be left behind. Join us NOW! 🧠😌
+          </p>
+          
+          <div className="space-y-6 mt-10">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-green-500/20">
+              <h3 className="text-xl font-semibold text-foreground mb-4">📢 WhatsApp Channel</h3>
+              <p className="text-muted-foreground mb-4">Get official updates, tips, and resources directly from us</p>
+              <a 
+                href="https://whatsapp.com/channel/0029VbAj1TM90x30uxHnVE15" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                Join Our Channel
+              </a>
+            </div>
+            
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-green-500/20">
+              <h3 className="text-xl font-semibold text-foreground mb-4">👥 WhatsApp Group</h3>
+              <p className="text-muted-foreground mb-4">Connect with other candidates, share resources, and support each other</p>
+              <a 
+                href="https://chat.whatsapp.com/FZQUYs2fTRZ7wegHqyRFHs" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                <Users className="w-5 h-5 mr-2" />
+                Join Group Chat
+              </a>
+            </div>
+          </div>
+          
+          <p className="mt-8 text-sm text-muted-foreground">
+            Limited spots available. Join now to secure your place in our community!
+          </p>
+        </div>
+      </section>
+
+      {/* Feedback Section */}
+      <section className="py-12 px-4 bg-gray-50 dark:bg-gray-900">
+        <div className="container mx-auto max-w-4xl">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold mb-2">We Value Your Feedback</h2>
+            <p className="text-muted-foreground">Help us improve by sharing your thoughts and reporting any issues</p>
+          </div>
+          <FeedbackForm />
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="bg-gray-900 dark:bg-black text-white py-12 px-4">
         <div className="container mx-auto text-center">
@@ -317,6 +382,15 @@ const Index = () => {
           <p className="text-sm text-gray-500">
             © 2024 Success Guaranteed. All rights reserved. | Cameroon GCE Exam Support
           </p>
+          <div className="mt-4">
+            <a 
+              href="#feedback" 
+              className="inline-flex items-center text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              <MessageSquare className="w-4 h-4 mr-1" />
+              Give Feedback
+            </a>
+          </div>
         </div>
       </footer>
 
