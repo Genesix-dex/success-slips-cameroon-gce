@@ -25,19 +25,47 @@ export function FeedbackForm() {
     }
 
     setIsSubmitting(true);
-    
-    // FormSubmit will handle the submission and email notification
-    // The form's action will handle the actual submission
-    // We'll show success after a short delay to allow the form to submit
-    setTimeout(() => {
-      toast({
-        title: "Thank you!",
-        description: "Your feedback has been submitted successfully.",
+
+    try {
+      // Create form data
+      const formData = new FormData();
+      formData.append('_subject', `New ${type} - Success Slips Feedback`);
+      formData.append('_next', `${window.location.origin}/thank-you`);
+      formData.append('_captcha', 'false');
+      formData.append('_template', 'table');
+      formData.append('feedback_type', type);
+      formData.append('page_url', window.location.href);
+      formData.append('message', message);
+      if (email) formData.append('email', email);
+      
+      // Submit to FormSubmit
+      const response = await fetch('https://formsubmit.co/ajax/ratsmart92@gmail.com', {
+        method: 'POST',
+        body: formData,
       });
-      setMessage('');
-      setEmail('');
+
+      const result = await response.json();
+      
+      if (response.ok && result.success === 'true') {
+        toast({
+          title: "Thank you!",
+          description: "Your feedback has been submitted successfully.",
+        });
+        setMessage('');
+        setEmail('');
+      } else {
+        throw new Error(result.message || 'Failed to submit feedback');
+      }
+    } catch (error) {
+      console.error('Form submission error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to submit feedback. Please try again later or contact support.",
+        variant: "destructive",
+      });
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -107,7 +135,6 @@ export function FeedbackForm() {
           </label>
           <Input
             id="email"
-            name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
